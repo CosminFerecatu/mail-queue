@@ -148,7 +148,7 @@ export async function createWebhookDelivery(
     })
     .returning({ id: webhookDeliveries.id });
 
-  const deliveryId = delivery?.id;
+  const deliveryId = delivery?.id ?? randomUUID();
 
   // Queue the delivery job
   const jobData: DeliverWebhookJobData = {

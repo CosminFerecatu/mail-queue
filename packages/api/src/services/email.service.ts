@@ -46,7 +46,9 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   }
 
   for (let i = 0; i < input.to.length; i++) {
-    const toValidation = validateEmail(input.to[i]?.email);
+    const recipient = input.to[i];
+    if (!recipient) continue;
+    const toValidation = validateEmail(recipient.email);
     if (!toValidation.isValid) {
       validationErrors.push({ path: `to[${i}].email`, message: toValidation.errors.join(', ') });
     }
@@ -184,9 +186,9 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   );
 
   return {
-    id: createdEmail?.id,
-    status: createdEmail?.status,
-    queuedAt: createdEmail?.createdAt,
+    id: createdEmail?.id ?? emailId,
+    status: createdEmail?.status ?? 'queued',
+    queuedAt: createdEmail?.createdAt ?? now,
   };
 }
 

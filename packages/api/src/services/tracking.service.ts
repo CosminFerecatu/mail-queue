@@ -106,13 +106,14 @@ export async function createTrackingLink(
 
   logger.debug({ emailId, shortCode, originalUrl }, 'Tracking link created');
 
+  const now = new Date();
   return {
-    id: link?.id,
-    emailId: link?.emailId,
-    shortCode: link?.shortCode,
-    originalUrl: link?.originalUrl,
-    clickCount: link?.clickCount,
-    createdAt: link?.createdAt,
+    id: link?.id ?? '',
+    emailId: link?.emailId ?? emailId,
+    shortCode: link?.shortCode ?? shortCode,
+    originalUrl: link?.originalUrl ?? originalUrl,
+    clickCount: link?.clickCount ?? 0,
+    createdAt: link?.createdAt ?? now,
   };
 }
 

@@ -131,19 +131,19 @@ export async function createScheduledJob(
   );
 
   return {
-    id: created?.id,
-    appId: created?.appId,
-    queueId: created?.queueId,
+    id: created?.id ?? '',
+    appId: created?.appId ?? appId,
+    queueId: created?.queueId ?? queue.id,
     queueName: queue.name,
-    name: created?.name,
-    cronExpression: created?.cronExpression,
-    timezone: created?.timezone,
-    emailTemplate: created?.emailTemplate as EmailTemplate,
-    isActive: created?.isActive,
-    lastRunAt: created?.lastRunAt,
-    nextRunAt: created?.nextRunAt,
-    createdAt: created?.createdAt,
-    updatedAt: created?.updatedAt,
+    name: created?.name ?? input.name,
+    cronExpression: created?.cronExpression ?? input.cronExpression,
+    timezone: created?.timezone ?? timezone,
+    emailTemplate: (created?.emailTemplate as EmailTemplate) ?? input.emailTemplate,
+    isActive: created?.isActive ?? true,
+    lastRunAt: created?.lastRunAt ?? null,
+    nextRunAt: created?.nextRunAt ?? nextRunAt,
+    createdAt: created?.createdAt ?? now,
+    updatedAt: created?.updatedAt ?? now,
   };
 }
 

@@ -66,13 +66,13 @@ export async function addToSuppressionList(
     logger.info({ appId, emailAddress: normalizedEmail, reason }, 'Suppression entry updated');
 
     return {
-      id: updated?.id,
-      appId: updated?.appId,
-      emailAddress: updated?.emailAddress,
-      reason: updated?.reason,
-      sourceEmailId: updated?.sourceEmailId,
-      expiresAt: updated?.expiresAt,
-      createdAt: updated?.createdAt,
+      id: updated?.id ?? existing.id,
+      appId: updated?.appId ?? existing.appId,
+      emailAddress: updated?.emailAddress ?? existing.emailAddress,
+      reason: updated?.reason ?? existing.reason,
+      sourceEmailId: updated?.sourceEmailId ?? existing.sourceEmailId,
+      expiresAt: updated?.expiresAt ?? existing.expiresAt,
+      createdAt: updated?.createdAt ?? existing.createdAt,
     };
   }
 
@@ -91,13 +91,13 @@ export async function addToSuppressionList(
   logger.info({ appId, emailAddress: normalizedEmail, reason }, 'Email added to suppression list');
 
   return {
-    id: created?.id,
-    appId: created?.appId,
-    emailAddress: created?.emailAddress,
-    reason: created?.reason,
-    sourceEmailId: created?.sourceEmailId,
-    expiresAt: created?.expiresAt,
-    createdAt: created?.createdAt,
+    id: created?.id ?? '',
+    appId: created?.appId ?? appId,
+    emailAddress: created?.emailAddress ?? normalizedEmail,
+    reason: created?.reason ?? reason,
+    sourceEmailId: created?.sourceEmailId ?? sourceEmailId ?? null,
+    expiresAt: created?.expiresAt ?? expiresAt ?? null,
+    createdAt: created?.createdAt ?? new Date(),
   };
 }
 
