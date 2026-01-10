@@ -1,4 +1,9 @@
+import { config as dotenvConfig } from 'dotenv';
+import { resolve } from 'node:path';
 import { z } from 'zod';
+
+// Load .env from root directory
+dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
 
 const ConfigSchema = z.object({
   // Worker

@@ -49,3 +49,6 @@ credentials.json
 
 # Docker
 .docker/
+/packages/dashboard/.next/server/chunks/ssr
+/packages/dashboard/.next/static/chunks
+/packages/dashboard/.next

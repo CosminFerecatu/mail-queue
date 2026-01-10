@@ -14,6 +14,7 @@ import { authPlugin } from './middleware/auth.js';
 import { metricsPlugin } from './plugins/metrics.js';
 
 // Routes
+import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { emailRoutes } from './routes/emails.js';
@@ -125,6 +126,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(metricsRoutes);
   // Tracking routes (no prefix, no auth - public endpoints for pixel/redirect)
   await app.register(trackingRoutes);
+  await app.register(authRoutes, { prefix: '/v1/auth' });
   await app.register(healthRoutes, { prefix: '/v1' });
   await app.register(emailRoutes, { prefix: '/v1' });
   await app.register(appRoutes, { prefix: '/v1' });
