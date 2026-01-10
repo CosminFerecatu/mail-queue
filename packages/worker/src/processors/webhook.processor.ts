@@ -135,8 +135,8 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
 
     if (shouldRetry) {
       // Calculate next retry time
-      const retryDelay = RETRY_DELAYS[attempt - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
-      const nextRetryAt = new Date(Date.now() + retryDelay!);
+      const retryDelay = RETRY_DELAYS[attempt - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1] ?? 60000;
+      const nextRetryAt = new Date(Date.now() + retryDelay);
 
       await db
         .update(webhookDeliveries)
@@ -151,7 +151,7 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
       jobLogger.info(
         {
           nextRetryAt: nextRetryAt.toISOString(),
-          retryDelay: retryDelay! / 1000,
+          retryDelay: retryDelay / 1000,
         },
         'Webhook delivery scheduled for retry'
       );

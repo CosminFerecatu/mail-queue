@@ -106,7 +106,7 @@ export async function requireAdminAuth(
   // Already sent a response
   if (reply.sent) return;
 
-  if (!request.isAdmin && !hasScope(request.apiKey!, 'admin')) {
+  if (!request.isAdmin && (!request.apiKey || !hasScope(request.apiKey, 'admin'))) {
     reply.status(403).send({
       success: false,
       error: {
@@ -127,7 +127,7 @@ export function requireScope(scope: ApiKeyScope) {
     // Admin always has access
     if (request.isAdmin) return;
 
-    if (!hasScope(request.apiKey!, scope)) {
+    if (!request.apiKey || !hasScope(request.apiKey, scope)) {
       reply.status(403).send({
         success: false,
         error: {
@@ -149,7 +149,7 @@ export function requireAnyScope(scopes: ApiKeyScope[]) {
     // Admin always has access
     if (request.isAdmin) return;
 
-    if (!hasAnyScope(request.apiKey!, scopes)) {
+    if (!request.apiKey || !hasAnyScope(request.apiKey, scopes)) {
       reply.status(403).send({
         success: false,
         error: {

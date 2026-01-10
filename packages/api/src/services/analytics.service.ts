@@ -201,7 +201,9 @@ export async function getDeliveryMetrics(
       });
     }
 
-    const point = dataMap.get(ts)!;
+    const point = dataMap.get(ts);
+    if (!point) continue;
+
     switch (row.status) {
       case 'sent':
         point.sent = row.count;
@@ -307,7 +309,9 @@ export async function getEngagementMetrics(
       });
     }
 
-    const point = dataMap.get(ts)!;
+    const point = dataMap.get(ts);
+    if (!point) continue;
+
     switch (row.eventType) {
       case 'delivered':
         point.delivered = row.count;

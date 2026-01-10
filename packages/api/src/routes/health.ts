@@ -56,13 +56,16 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       // Queue stats not available
     }
 
+    const postgresqlCheck = checks['postgresql'] ?? { status: 'unhealthy' as const };
+    const redisCheck = checks['redis'] ?? { status: 'unhealthy' as const };
+
     const response: HealthCheckResponse = {
       status: overallStatus,
       version: process.env['npm_package_version'] ?? '0.0.1',
       uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
       checks: {
-        postgresql: checks['postgresql']!,
-        redis: checks['redis']!,
+        postgresql: postgresqlCheck,
+        redis: redisCheck,
       },
       queues: queueStats,
     };

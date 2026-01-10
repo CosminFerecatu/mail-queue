@@ -55,7 +55,8 @@ function generateShortCode(): string {
   let result = '';
 
   for (let i = 0; i < SHORT_CODE_LENGTH; i++) {
-    result += chars[bytes[i]! % chars.length];
+    const byte = bytes[i] ?? 0;
+    result += chars[byte % chars.length];
   }
 
   return result;
@@ -367,23 +368,26 @@ export async function rewriteHtmlLinksForTracking(
   const processedUrls = new Map<string, string>();
 
   // First pass: collect all URLs and create tracking links
-  let match;
   const matches: Array<{ fullMatch: string; url: string }> = [];
+  let match: RegExpExecArray | null = linkRegex.exec(html);
 
-  while ((match = linkRegex.exec(html)) !== null) {
-    const url = match[2]!;
+  while (match !== null) {
+    const fullMatch = match[0];
+    const url = match[2];
 
-    // Skip mailto:, tel:, and anchor links
-    if (url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#')) {
+    // Skip if url is undefined, or if it's mailto:, tel:, or anchor links
+    if (!url || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#')) {
+      match = linkRegex.exec(html);
       continue;
     }
 
     // Skip already-tracked URLs
     if (url.includes('/c/')) {
+      match = linkRegex.exec(html);
       continue;
     }
 
-    matches.push({ fullMatch: match[0]!, url });
+    matches.push({ fullMatch, url });
 
     // Create tracking link if not already created
     if (!processedUrls.has(url)) {
@@ -391,6 +395,8 @@ export async function rewriteHtmlLinksForTracking(
       processedUrls.set(url, link.shortCode);
       createdLinks.push({ shortCode: link.shortCode, originalUrl: url });
     }
+
+    match = linkRegex.exec(html);
   }
 
   // Second pass: replace URLs

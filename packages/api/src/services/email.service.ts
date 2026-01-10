@@ -506,7 +506,8 @@ export async function createBatchEmails(options: CreateBatchEmailOptions): Promi
 
   // 4. Process each recipient
   for (let i = 0; i < input.emails.length; i++) {
-    const recipient = input.emails[i]!;
+    const recipient = input.emails[i];
+    if (!recipient) continue;
 
     try {
       // Extract recipient email
