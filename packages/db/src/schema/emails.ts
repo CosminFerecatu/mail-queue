@@ -118,6 +118,7 @@ export const emailEvents = pgTable(
       messageId?: string;
       accepted?: string[];
       rejected?: string[];
+      sandboxMode?: boolean;
       // Click/Open tracking data
       linkUrl?: string;
       userAgent?: string;
@@ -126,12 +127,21 @@ export const emailEvents = pgTable(
       bounceType?: 'hard' | 'soft';
       bounceSubType?: string;
       bounceMessage?: string;
+      bouncedRecipients?: string[];
       // Complaint data
       complaintType?: string;
+      complainedRecipients?: string[];
       // Retry/cancel data
       retry?: boolean;
       previousAttempts?: number;
       cancelled?: boolean;
+      // Batch data
+      batchId?: string;
+      batchIndex?: number;
+      // Throttling data
+      throttled?: boolean;
+      reason?: string;
+      reputationScore?: number;
     }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

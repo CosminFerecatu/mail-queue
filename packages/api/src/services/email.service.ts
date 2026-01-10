@@ -2,6 +2,8 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDatabase, emails, queues, emailEvents, suppressionList, type EmailRow } from '@mail-queue/db';
 import {
   type CreateEmailInput,
+  type CreateBatchEmailInput,
+  type BatchEmailResponse,
   type EmailResponse,
   type EmailEvent,
   type SendEmailJobData,
@@ -449,5 +451,174 @@ export async function retryFailedEmail(
     id: emailId,
     status: 'queued',
     message: 'Email has been re-queued for retry',
+  };
+}
+
+// ===========================================
+// Batch Email Functions
+// ===========================================
+
+export interface CreateBatchEmailOptions {
+  appId: string;
+  input: CreateBatchEmailInput;
+}
+
+export async function createBatchEmails(options: CreateBatchEmailOptions): Promise<BatchEmailResponse> {
+  const { appId, input } = options;
+  const db = getDatabase();
+  const batchId = randomUUID();
+
+  // 1. Validate from address
+  const fromValidation = validateEmail(input.from.email);
+  if (!fromValidation.isValid) {
+    throw new ValidationError([{ path: 'from.email', message: fromValidation.errors.join(', ') }]);
+  }
+
+  // 2. Validate HTML content if provided
+  if (input.html) {
+    const htmlValidation = validateHtml(input.html, input.text ?? null);
+    if (!htmlValidation.isValid) {
+      throw new ValidationError(
+        htmlValidation.errors.map((e) => ({ path: 'html', message: e }))
+      );
+    }
+  }
+
+  // 3. Find the queue
+  const [queue] = await db
+    .select()
+    .from(queues)
+    .where(and(eq(queues.appId, appId), eq(queues.name, input.queue)))
+    .limit(1);
+
+  if (!queue) {
+    throw new QueueNotFoundError(input.queue);
+  }
+
+  if (queue.isPaused) {
+    throw new QueuePausedError(input.queue);
+  }
+
+  const now = new Date();
+  const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+  const emailIds: string[] = [];
+  const errors: Array<{ index: number; error: string }> = [];
+
+  // 4. Process each recipient
+  for (let i = 0; i < input.emails.length; i++) {
+    const recipient = input.emails[i]!;
+
+    try {
+      // Extract recipient email
+      const toEmail = typeof recipient.to === 'string'
+        ? { email: recipient.to }
+        : recipient.to;
+
+      // Validate recipient email
+      const toValidation = validateEmail(toEmail.email);
+      if (!toValidation.isValid) {
+        errors.push({ index: i, error: `Invalid email: ${toValidation.errors.join(', ')}` });
+        continue;
+      }
+
+      // Check suppression list
+      const [suppressed] = await db
+        .select()
+        .from(suppressionList)
+        .where(eq(suppressionList.emailAddress, toEmail.email.toLowerCase()))
+        .limit(1);
+
+      if (suppressed) {
+        errors.push({ index: i, error: `Email suppressed: ${suppressed.reason}` });
+        continue;
+      }
+
+      // Create email record
+      const emailId = randomUUID();
+      const toAddresses = [toEmail];
+
+      // Merge batch-level and recipient-level personalizations
+      const personalizations = {
+        ...(recipient.personalizations ?? {}),
+      };
+
+      const metadata = {
+        batchId,
+        batchIndex: i,
+        ...(recipient.metadata ?? {}),
+      };
+
+      await db.insert(emails).values({
+        id: emailId,
+        appId,
+        queueId: queue.id,
+        fromAddress: input.from.email,
+        fromName: input.from.name ?? null,
+        toAddresses,
+        cc: recipient.cc ?? null,
+        bcc: recipient.bcc ?? null,
+        replyTo: input.replyTo ?? null,
+        subject: input.subject,
+        htmlBody: input.html ?? null,
+        textBody: input.text ?? null,
+        headers: input.headers ?? null,
+        personalizationData: personalizations,
+        metadata,
+        status: 'queued',
+        scheduledAt,
+        createdAt: now,
+      });
+
+      // Record queued event
+      await db.insert(emailEvents).values({
+        emailId,
+        eventType: 'queued',
+        eventData: { batchId, batchIndex: i },
+        createdAt: now,
+      });
+
+      // Add to BullMQ queue
+      const jobData: SendEmailJobData = {
+        emailId,
+        appId,
+        queueId: queue.id,
+        priority: queue.priority,
+      };
+
+      if (scheduledAt && scheduledAt > now) {
+        const delayMs = scheduledAt.getTime() - now.getTime();
+        await addDelayedEmailJob(jobData, delayMs);
+      } else {
+        await addEmailJob(jobData);
+      }
+
+      emailIds.push(emailId);
+      recordEmailQueued(appId, queue.name);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      errors.push({ index: i, error: errorMessage });
+    }
+  }
+
+  logger.info(
+    {
+      batchId,
+      appId,
+      queueId: queue.id,
+      queueName: queue.name,
+      totalCount: input.emails.length,
+      queuedCount: emailIds.length,
+      failedCount: errors.length,
+    },
+    'Batch emails queued'
+  );
+
+  return {
+    batchId,
+    totalCount: input.emails.length,
+    queuedCount: emailIds.length,
+    failedCount: errors.length,
+    emailIds,
+    errors: errors.length > 0 ? errors : undefined,
   };
 }

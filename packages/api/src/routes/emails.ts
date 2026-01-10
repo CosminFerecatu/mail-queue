@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { CreateEmailSchema, isMailQueueError } from '@mail-queue/core';
+import { CreateEmailSchema, CreateBatchEmailSchema, isMailQueueError } from '@mail-queue/core';
 import {
   createEmail,
+  createBatchEmails,
   getEmailById,
   getEmailsByAppId,
   getEmailEvents,
@@ -145,6 +146,78 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
         return reply.status(201).send({
           success: true,
+          data: result,
+        });
+      } catch (error) {
+        if (isMailQueueError(error)) {
+          return reply.status(error.statusCode).send({
+            success: false,
+            error: error.toJSON(),
+          });
+        }
+        throw error;
+      }
+    }
+  );
+
+  // Create batch emails
+  app.post(
+    '/emails/batch',
+    { preHandler: requireScope('email:send') },
+    async (request, reply) => {
+      if (!request.appId || !request.apiKey) {
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'App authentication required',
+          },
+        });
+      }
+
+      try {
+        // Validate request body
+        const parseResult = CreateBatchEmailSchema.safeParse(request.body);
+        if (!parseResult.success) {
+          return reply.status(400).send({
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Invalid request body',
+              details: parseResult.error.issues.map((i) => ({
+                path: i.path.join('.'),
+                message: i.message,
+              })),
+            },
+          });
+        }
+
+        const input = parseResult.data;
+
+        // Get queue to check rate limit and paused status
+        if (input.queue) {
+          const queue = await getQueueByName(input.queue, request.appId);
+          if (queue?.isPaused) {
+            return reply.status(503).send({
+              success: false,
+              error: {
+                code: 'QUEUE_PAUSED',
+                message: `Queue "${input.queue}" is paused`,
+              },
+            });
+          }
+        }
+
+        const result = await createBatchEmails({
+          appId: request.appId,
+          input,
+        });
+
+        // Return appropriate status based on results
+        const statusCode = result.failedCount === result.totalCount ? 400 : 201;
+
+        return reply.status(statusCode).send({
+          success: result.queuedCount > 0,
           data: result,
         });
       } catch (error) {

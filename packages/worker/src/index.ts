@@ -24,6 +24,7 @@ import {
   processAggregateStatsJob,
   processReputationUpdateJob,
 } from './processors/analytics.processor.js';
+import { startScheduler } from './processors/scheduler.processor.js';
 import {
   startMetricsServer,
   stopMetricsServer,
@@ -35,6 +36,7 @@ let emailWorker: Worker<SendEmailJobData> | null = null;
 let webhookWorker: Worker<DeliverWebhookJobData> | null = null;
 let trackingWorker: Worker<RecordTrackingJobData> | null = null;
 let analyticsWorker: Worker<AggregateStatsJobData | UpdateReputationJobData> | null = null;
+let stopScheduler: (() => void) | null = null;
 let isShuttingDown = false;
 
 async function main() {
@@ -249,6 +251,9 @@ async function main() {
     logger.error({ error }, 'Analytics worker error');
   });
 
+  // Start the scheduler for recurring jobs (runs every minute)
+  stopScheduler = startScheduler(60000);
+
   logger.info('All workers started');
 }
 
@@ -263,6 +268,12 @@ async function shutdown(signal: string) {
 
   // Set worker status to stopped
   setWorkerStatus(false);
+
+  // Stop the scheduler
+  if (stopScheduler) {
+    stopScheduler();
+    logger.info('Scheduler stopped');
+  }
 
   try {
     // Close all workers (waits for active jobs to complete)

@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { getDatabase, emails, emailEvents, queues, smtpConfigs } from '@mail-queue/db';
+import { getDatabase, emails, emailEvents, queues, smtpConfigs, apps, appReputation } from '@mail-queue/db';
 import type { SendEmailJobData } from '@mail-queue/core';
 import { parseEncryptionKey, SmtpError } from '@mail-queue/core';
 import {
@@ -48,6 +48,72 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
   if (email.status !== 'queued' && email.status !== 'processing') {
     jobLogger.info({ status: email.status }, 'Email already processed, skipping');
     return;
+  }
+
+  // Fetch app to check sandbox mode
+  const [app] = await db
+    .select({ sandboxMode: apps.sandboxMode })
+    .from(apps)
+    .where(eq(apps.id, appId))
+    .limit(1);
+
+  const isSandboxMode = app?.sandboxMode ?? false;
+
+  // Check if app is throttled due to poor reputation
+  const [reputation] = await db
+    .select({
+      isThrottled: appReputation.isThrottled,
+      throttleReason: appReputation.throttleReason,
+      reputationScore: appReputation.reputationScore,
+    })
+    .from(appReputation)
+    .where(eq(appReputation.appId, appId))
+    .limit(1);
+
+  if (reputation?.isThrottled && !isSandboxMode) {
+    // App is throttled - delay or reject based on severity
+    const score = parseFloat(reputation.reputationScore ?? '100');
+
+    if (score < 20) {
+      // Very poor reputation - reject the email
+      jobLogger.warn(
+        {
+          reputationScore: score,
+          throttleReason: reputation.throttleReason,
+        },
+        'Email rejected due to very poor sender reputation'
+      );
+
+      await db
+        .update(emails)
+        .set({
+          status: 'failed',
+          lastError: `Rejected: ${reputation.throttleReason}`,
+        })
+        .where(eq(emails.id, emailId));
+
+      await db.insert(emailEvents).values({
+        emailId,
+        eventType: 'processing',
+        eventData: {
+          throttled: true,
+          reason: reputation.throttleReason ?? undefined,
+          reputationScore: score,
+        },
+        createdAt: new Date(),
+      });
+
+      return; // Don't process further
+    }
+
+    // Moderate throttling - log warning but continue
+    jobLogger.warn(
+      {
+        reputationScore: score,
+        throttleReason: reputation.throttleReason,
+      },
+      'App is throttled due to reputation, proceeding with caution'
+    );
   }
 
   // 2. Update status to processing
@@ -118,22 +184,37 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
   if (email.personalizationData) {
     const data = email.personalizationData as Record<string, unknown>;
 
-    // Simple variable replacement {{variable}}
+    /**
+     * Variable replacement with support for:
+     * - {{variable}} - simple variable
+     * - {{object.property}} - nested object access
+     * - {{variable|'default'}} - default value if variable not found
+     * - {{object.property|'default'}} - nested with default
+     */
     const replaceVars = (text: string): string => {
-      return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (match, path: string) => {
-        const keys = path.split('.');
-        let value: unknown = data;
+      // Match {{path}} or {{path|'default'}} or {{path|"default"}}
+      return text.replace(
+        /\{\{(\w+(?:\.\w+)*)(?:\|['"]([^'"]*)['""])?\}\}/g,
+        (match, path: string, defaultValue?: string) => {
+          const keys = path.split('.');
+          let value: unknown = data;
 
-        for (const key of keys) {
-          if (value && typeof value === 'object' && key in value) {
-            value = (value as Record<string, unknown>)[key];
-          } else {
-            return match; // Keep original if path not found
+          for (const key of keys) {
+            if (value && typeof value === 'object' && key in value) {
+              value = (value as Record<string, unknown>)[key];
+            } else {
+              // Path not found, use default or keep original
+              return defaultValue !== undefined ? defaultValue : match;
+            }
           }
-        }
 
-        return String(value ?? match);
-      });
+          // Return value if found, otherwise default or original
+          if (value !== undefined && value !== null) {
+            return String(value);
+          }
+          return defaultValue !== undefined ? defaultValue : match;
+        }
+      );
     };
 
     subject = replaceVars(subject);
@@ -141,22 +222,49 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
     if (textBody) textBody = replaceVars(textBody);
   }
 
-  // 5. Send the email
+  // 5. Send the email (or simulate in sandbox mode)
   try {
-    const result = await sendMail(smtpConfig, {
-      from: {
-        email: email.fromAddress,
-        name: email.fromName ?? undefined,
-      },
-      to: email.toAddresses,
-      cc: email.cc ?? undefined,
-      bcc: email.bcc ?? undefined,
-      replyTo: email.replyTo ?? undefined,
-      subject,
-      html: htmlBody ?? undefined,
-      text: textBody ?? undefined,
-      headers: email.headers ?? undefined,
-    });
+    let result: { messageId: string; accepted: string[]; rejected: string[] };
+
+    if (isSandboxMode) {
+      // Sandbox mode: simulate sending without actual SMTP
+      const recipients = Array.isArray(email.toAddresses)
+        ? email.toAddresses.map((r: { email?: string } | string) =>
+            typeof r === 'string' ? r : r.email ?? ''
+          )
+        : [];
+
+      result = {
+        messageId: `sandbox-${emailId}-${Date.now()}@mail-queue.local`,
+        accepted: recipients,
+        rejected: [],
+      };
+
+      jobLogger.info(
+        {
+          sandboxMode: true,
+          to: recipients,
+          subject,
+        },
+        'Email simulated in sandbox mode (not actually sent)'
+      );
+    } else {
+      // Production mode: actually send the email
+      result = await sendMail(smtpConfig, {
+        from: {
+          email: email.fromAddress,
+          name: email.fromName ?? undefined,
+        },
+        to: email.toAddresses,
+        cc: email.cc ?? undefined,
+        bcc: email.bcc ?? undefined,
+        replyTo: email.replyTo ?? undefined,
+        subject,
+        html: htmlBody ?? undefined,
+        text: textBody ?? undefined,
+        headers: email.headers ?? undefined,
+      });
+    }
 
     // 6. Update email status to sent
     const now = new Date();
@@ -176,6 +284,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
         messageId: result.messageId,
         accepted: result.accepted,
         rejected: result.rejected,
+        sandboxMode: isSandboxMode,
       },
       createdAt: now,
     });
@@ -189,6 +298,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
         messageId: result.messageId,
         accepted: result.accepted.length,
         rejected: result.rejected.length,
+        sandboxMode: isSandboxMode,
       },
       'Email sent successfully'
     );

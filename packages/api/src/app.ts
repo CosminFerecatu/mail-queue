@@ -25,6 +25,8 @@ import { smtpConfigRoutes } from './routes/smtp-configs.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { webhooksRoutes } from './routes/webhooks.js';
 import { trackingRoutes } from './routes/tracking.js';
+import { suppressionRoutes } from './routes/suppression.js';
+import { scheduledJobsRoutes } from './routes/scheduled-jobs.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -132,6 +134,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(smtpConfigRoutes, { prefix: '/v1' });
   await app.register(analyticsRoutes, { prefix: '/v1' });
   await app.register(webhooksRoutes, { prefix: '/v1' });
+  await app.register(suppressionRoutes, { prefix: '/v1' });
+  await app.register(scheduledJobsRoutes, { prefix: '/v1' });
 
   // Root route
   app.get('/', async () => ({
