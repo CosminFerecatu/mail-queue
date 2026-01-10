@@ -1,7 +1,7 @@
 import { eq, and, lte } from 'drizzle-orm';
 import { getDatabase, scheduledJobs, queues } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
 import { randomUUID } from 'node:crypto';
 
 const schedulerLogger = logger.child({ processor: 'scheduler' });
@@ -19,7 +19,7 @@ interface EmailTemplate {
  */
 function calculateNextRunTime(cronExpression: string, timezone: string): Date | null {
   try {
-    const interval = parseExpression(cronExpression, {
+    const interval = cronParser.parseExpression(cronExpression, {
       currentDate: new Date(),
       tz: timezone,
     });

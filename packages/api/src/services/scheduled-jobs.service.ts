@@ -2,7 +2,7 @@ import { eq, and, desc, sql, lte } from 'drizzle-orm';
 import { getDatabase, scheduledJobs, queues } from '@mail-queue/db';
 import { ValidationError, QueueNotFoundError } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
 
 export interface EmailTemplate {
   from: { email: string; name?: string };
@@ -55,7 +55,7 @@ export interface ListScheduledJobsOptions {
  */
 function calculateNextRunTime(cronExpression: string, timezone: string): Date | null {
   try {
-    const interval = parseExpression(cronExpression, {
+    const interval = cronParser.parseExpression(cronExpression, {
       currentDate: new Date(),
       tz: timezone,
     });
@@ -71,7 +71,7 @@ function calculateNextRunTime(cronExpression: string, timezone: string): Date | 
  */
 export function validateCronExpression(cronExpression: string, timezone = 'UTC'): boolean {
   try {
-    parseExpression(cronExpression, { tz: timezone });
+    cronParser.parseExpression(cronExpression, { tz: timezone });
     return true;
   } catch {
     return false;
