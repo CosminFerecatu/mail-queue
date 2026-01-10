@@ -16,6 +16,7 @@ import {
 } from '@mail-queue/core';
 import { addEmailJob, addDelayedEmailJob } from '../lib/queue.js';
 import { logger } from '../lib/logger.js';
+import { recordEmailQueued } from '../lib/metrics.js';
 import { randomUUID } from 'node:crypto';
 
 export interface CreateEmailOptions {
@@ -166,6 +167,9 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   } else {
     await addEmailJob(jobData);
   }
+
+  // Record metric
+  recordEmailQueued(appId, queue.name);
 
   logger.info(
     {

@@ -1,3 +1,7 @@
+// Initialize tracing before other imports
+import { initTracing, shutdown as shutdownTracing } from './lib/tracing.js';
+initTracing();
+
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { logger } from './lib/logger.js';
@@ -17,6 +21,7 @@ async function main() {
       await closeQueues();
       await closeRedis();
       await closeDatabase();
+      await shutdownTracing();
       logger.info('Shutdown complete');
       process.exit(0);
     } catch (error) {

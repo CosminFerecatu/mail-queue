@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Mail Queue Dashboards'
+    orgId: 1
+    folder: 'Mail Queue'
+    folderUid: 'mail-queue'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

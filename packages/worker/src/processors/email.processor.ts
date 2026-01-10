@@ -11,12 +11,22 @@ import {
 } from '../smtp/client.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import {
+  recordEmailProcessed,
+  startEmailProcessingTimer,
+  recordEmailRetry,
+  recordSmtpError,
+} from '../lib/metrics.js';
 
 const encryptionKey = parseEncryptionKey(config.encryptionKey);
 
 export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void> {
   const { emailId, appId, queueId } = job.data;
   const jobLogger = logger.child({ jobId: job.id, emailId, appId });
+
+  // Start metrics timer
+  const stopTimer = startEmailProcessingTimer();
+  let queueName = 'unknown';
 
   jobLogger.info('Processing email job');
 
@@ -61,6 +71,11 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
     .from(queues)
     .where(eq(queues.id, queueId))
     .limit(1);
+
+  // Capture queue name for metrics
+  if (queue) {
+    queueName = queue.name;
+  }
 
   if (queue?.smtpConfigId) {
     const [smtpConfigRow] = await db
@@ -165,6 +180,10 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
       createdAt: now,
     });
 
+    // Record metrics
+    stopTimer({ app_id: appId, queue: queueName });
+    recordEmailProcessed(appId, queueName, 'sent');
+
     jobLogger.info(
       {
         messageId: result.messageId,
@@ -182,11 +201,24 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
     const errorMessage = error instanceof Error ? error.message : String(error);
     jobLogger.error({ error: errorMessage }, 'Failed to send email');
 
+    // Record metrics
+    stopTimer({ app_id: appId, queue: queueName });
+    const isFinalAttempt = job.attemptsMade >= (job.opts?.attempts ?? 5) - 1;
+
+    if (isFinalAttempt) {
+      recordEmailProcessed(appId, queueName, 'failed');
+    } else {
+      recordEmailRetry(appId, queueName);
+    }
+
+    // Record SMTP error
+    recordSmtpError(smtpConfig?.host ?? 'unknown', error instanceof SmtpError ? 'smtp_error' : 'unknown');
+
     // Update email status
     await db
       .update(emails)
       .set({
-        status: job.attemptsMade >= (job.opts?.attempts ?? 5) - 1 ? 'failed' : 'queued',
+        status: isFinalAttempt ? 'failed' : 'queued',
         lastError: errorMessage,
         retryCount: email.retryCount + 1,
       })

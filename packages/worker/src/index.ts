@@ -1,3 +1,7 @@
+// Initialize tracing before other imports
+import { initTracing, shutdown as shutdownTracing } from './lib/tracing.js';
+initTracing();
+
 import { Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { QUEUE_NAMES, type SendEmailJobData } from '@mail-queue/core';
 import { closeDatabase } from '@mail-queue/db';
@@ -6,6 +10,12 @@ import { logger } from './lib/logger.js';
 import { getRedis, closeRedis } from './lib/redis.js';
 import { closeAllConnections } from './smtp/client.js';
 import { processEmailJob } from './processors/email.processor.js';
+import {
+  startMetricsServer,
+  stopMetricsServer,
+  setWorkerStatus,
+  setActiveJobs,
+} from './lib/metrics.js';
 
 let emailWorker: Worker<SendEmailJobData> | null = null;
 let isShuttingDown = false;
@@ -18,6 +28,9 @@ async function main() {
     },
     'Starting worker'
   );
+
+  // Start metrics server
+  startMetricsServer(9090);
 
   // Create email worker
   const redisConnection = getRedis() as unknown as ConnectionOptions;
@@ -40,12 +53,18 @@ async function main() {
     }
   );
 
+  // Track active jobs count
+  let activeJobsCount = 0;
+
   // Worker event handlers
   emailWorker.on('ready', () => {
     logger.info('Email worker ready');
+    setWorkerStatus(true);
   });
 
   emailWorker.on('active', (job) => {
+    activeJobsCount++;
+    setActiveJobs(activeJobsCount);
     logger.debug(
       {
         jobId: job.id,
@@ -57,6 +76,8 @@ async function main() {
   });
 
   emailWorker.on('completed', (job) => {
+    activeJobsCount = Math.max(0, activeJobsCount - 1);
+    setActiveJobs(activeJobsCount);
     logger.info(
       {
         jobId: job.id,
@@ -68,6 +89,8 @@ async function main() {
   });
 
   emailWorker.on('failed', (job, error) => {
+    activeJobsCount = Math.max(0, activeJobsCount - 1);
+    setActiveJobs(activeJobsCount);
     logger.error(
       {
         jobId: job?.id,
@@ -99,6 +122,9 @@ async function shutdown(signal: string) {
 
   logger.info({ signal }, 'Shutting down worker...');
 
+  // Set worker status to stopped
+  setWorkerStatus(false);
+
   try {
     // Close worker (waits for active jobs to complete)
     if (emailWorker) {
@@ -118,6 +144,12 @@ async function shutdown(signal: string) {
     // Close database
     await closeDatabase();
     logger.info('Database closed');
+
+    // Stop metrics server
+    await stopMetricsServer();
+
+    // Shutdown tracing
+    await shutdownTracing();
 
     logger.info('Shutdown complete');
     process.exit(0);

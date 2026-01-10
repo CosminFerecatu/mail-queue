@@ -11,8 +11,12 @@ import { getRedis } from './lib/redis.js';
 // Middleware
 import { authPlugin } from './middleware/auth.js';
 
+// Plugins
+import { metricsPlugin } from './plugins/metrics.js';
+
 // Routes
 import { healthRoutes } from './routes/health.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { emailRoutes } from './routes/emails.js';
 import { appRoutes } from './routes/apps.js';
 import { apiKeyRoutes } from './routes/apikeys.js';
@@ -109,7 +113,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Register auth plugin
   await app.register(authPlugin);
 
+  // Register metrics plugin (must be after auth to have access to appId)
+  await app.register(metricsPlugin);
+
   // Register routes
+  // Metrics endpoint (no prefix, no auth - protected at infrastructure level)
+  await app.register(metricsRoutes);
   await app.register(healthRoutes, { prefix: '/v1' });
   await app.register(emailRoutes, { prefix: '/v1' });
   await app.register(appRoutes, { prefix: '/v1' });

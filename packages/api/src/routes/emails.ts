@@ -12,6 +12,7 @@ import {
 import { getQueueByName } from '../services/queue.service.js';
 import { requireAuth, requireScope, requireAnyScope } from '../middleware/auth.js';
 import { getRateLimiter } from '../lib/rate-limiter.js';
+import { recordRateLimitHit } from '../lib/metrics.js';
 import { config } from '../config.js';
 
 const ParamsSchema = z.object({
@@ -97,6 +98,9 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         });
 
         if (!rateLimitCheck.allowed && rateLimitCheck.blockedBy) {
+          // Record rate limit hit metric
+          recordRateLimitHit(request.appId, rateLimitCheck.blockedBy);
+
           const blockedResult = rateLimitCheck.results[rateLimitCheck.blockedBy];
           if (!blockedResult) {
             return reply.status(429).send({

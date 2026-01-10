@@ -78,10 +78,113 @@ services:
     profiles:
       - tools
 
+  # ============================================================================
+  # Monitoring Stack (optional - use with 'monitoring' profile)
+  # ============================================================================
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: mailqueue-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    profiles:
+      - monitoring
+
+  # Grafana - Dashboards and visualization
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: mailqueue-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # Jaeger - Distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    container_name: mailqueue-jaeger
+    restart: unless-stopped
+    ports:
+      - "6831:6831/udp"    # Thrift compact protocol
+      - "6832:6832/udp"    # Thrift binary protocol
+      - "16686:16686"      # Web UI
+      - "4317:4317"        # OTLP gRPC
+      - "4318:4318"        # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    profiles:
+      - monitoring
+
+  # Node Exporter - System metrics (optional)
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: mailqueue-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
+    profiles:
+      - monitoring
+
+  # Redis Exporter - Redis metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: mailqueue-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis:6379
+    depends_on:
+      - redis
+    profiles:
+      - monitoring
+
+  # PostgreSQL Exporter - PostgreSQL metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: mailqueue-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://mailqueue:mailqueue@postgres:5432/mailqueue?sslmode=disable"
+    depends_on:
+      - postgres
+    profiles:
+      - monitoring
+
 volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   default:

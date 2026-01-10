@@ -1,0 +1,168 @@
+groups:
+  - name: mail-queue-email-alerts
+    rules:
+      # High bounce rate alert
+      - alert: HighBounceRate
+        expr: >
+          (
+            sum(rate(mailqueue_worker_emails_processed_total{status="failed"}[5m]))
+            /
+            sum(rate(mailqueue_worker_emails_processed_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High email bounce rate detected"
+          description: "Email bounce rate is above 5% for the last 5 minutes. Current rate: {{ $value | humanizePercentage }}"
+
+      # Critical bounce rate
+      - alert: CriticalBounceRate
+        expr: >
+          (
+            sum(rate(mailqueue_worker_emails_processed_total{status="failed"}[5m]))
+            /
+            sum(rate(mailqueue_worker_emails_processed_total[5m]))
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical email bounce rate"
+          description: "Email bounce rate is above 10% for the last 5 minutes. Current rate: {{ $value | humanizePercentage }}"
+
+      # Queue backlog
+      - alert: QueueBacklog
+        expr: sum(mailqueue_queue_depth{state="waiting"}) > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large email queue backlog"
+          description: "Email queue has {{ $value }} waiting jobs. This may indicate processing issues."
+
+      # Critical queue backlog
+      - alert: CriticalQueueBacklog
+        expr: sum(mailqueue_queue_depth{state="waiting"}) > 100000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical email queue backlog"
+          description: "Email queue has {{ $value }} waiting jobs. Immediate attention required."
+
+      # Failed jobs accumulating
+      - alert: FailedJobsAccumulating
+        expr: sum(mailqueue_queue_depth{state="failed"}) > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Failed email jobs accumulating"
+          description: "There are {{ $value }} failed jobs in the queue. Review and retry or clear them."
+
+  - name: mail-queue-api-alerts
+    rules:
+      # High API latency
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.99, sum(rate(mailqueue_http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency detected"
+          description: "API p99 latency is above 1 second. Current: {{ $value | humanizeDuration }}"
+
+      # High rate limit hits
+      - alert: HighRateLimitHits
+        expr: sum(rate(mailqueue_rate_limit_hits_total[5m])) * 60 > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit hit frequency"
+          description: "More than 100 rate limit hits per minute. Some clients may be experiencing issues."
+
+      # API errors
+      - alert: HighAPIErrorRate
+        expr: >
+          (
+            sum(rate(mailqueue_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(mailqueue_http_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate"
+          description: "API 5xx error rate is above 1%. Current rate: {{ $value | humanizePercentage }}"
+
+  - name: mail-queue-worker-alerts
+    rules:
+      # Worker down
+      - alert: WorkerDown
+        expr: sum(mailqueue_worker_status) < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No email workers running"
+          description: "All email workers appear to be down. Emails will not be processed."
+
+      # SMTP errors
+      - alert: HighSMTPErrorRate
+        expr: sum(rate(mailqueue_worker_smtp_errors_total[5m])) * 60 > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High SMTP error rate"
+          description: "More than 10 SMTP errors per minute. Check SMTP server connectivity."
+
+      # Processing latency
+      - alert: HighProcessingLatency
+        expr: histogram_quantile(0.99, sum(rate(mailqueue_worker_email_processing_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High email processing latency"
+          description: "Email processing p99 latency is above 30 seconds. Current: {{ $value | humanizeDuration }}"
+
+  - name: mail-queue-infrastructure-alerts
+    rules:
+      # Redis connection issues (via worker metrics)
+      - alert: WorkerMetricsDown
+        expr: up{job="mail-queue-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker metrics endpoint down"
+          description: "Cannot scrape metrics from email worker. The worker may be down or unreachable."
+
+      # API down
+      - alert: APIDown
+        expr: up{job="mail-queue-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API metrics endpoint down"
+          description: "Cannot scrape metrics from API. The API service may be down or unreachable."
+
+      # High memory usage (from Node.js metrics)
+      - alert: HighMemoryUsage
+        expr: >
+          (
+            process_resident_memory_bytes{job=~"mail-queue.*"}
+            /
+            1024 / 1024 / 1024
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Service {{ $labels.job }} is using more than 2GB of memory. Current: {{ $value | humanize1024 }}B"
