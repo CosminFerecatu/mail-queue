@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { eq, and, desc, sql, isNull, gt } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDatabase, apiKeys, apps, type ApiKeyRow } from '@mail-queue/db';
 import {
   type CreateApiKeyInput,
@@ -23,7 +23,7 @@ export interface ApiKeyWithApp extends ApiKeyRow {
 export async function createApiKey(
   appId: string,
   input: CreateApiKeyInput,
-  isSandbox: boolean = false
+  isSandbox = false
 ): Promise<{ apiKey: ApiKeyRow; plainKey: string }> {
   const db = getDatabase();
 

@@ -1,12 +1,8 @@
 import { eq, and, lte } from 'drizzle-orm';
-import { getDatabase, scheduledJobs, queues, emails, emailEvents } from '@mail-queue/db';
-import type { SendEmailJobData } from '@mail-queue/core';
+import { getDatabase, scheduledJobs, queues } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
 import { parseExpression } from 'cron-parser';
 import { randomUUID } from 'node:crypto';
-import { getRedis } from '../lib/redis.js';
-import { Queue } from 'bullmq';
-import { QUEUE_NAMES } from '@mail-queue/core';
 
 const schedulerLogger = logger.child({ processor: 'scheduler' });
 
@@ -106,7 +102,7 @@ async function processScheduledJob(job: {
   // Create an email from the template
   // Note: In a real implementation, you would also need to handle recipients
   // For now, we'll just log that the job ran since we don't have recipient data
-  const emailId = randomUUID();
+  const _emailId = randomUUID();
 
   // For scheduled jobs, we need recipients. Since the current schema doesn't have
   // a recipients field, we'll log this as a template that would need recipients.
@@ -151,7 +147,7 @@ async function processScheduledJob(job: {
  * Start the scheduler interval
  * Returns a cleanup function to stop the scheduler
  */
-export function startScheduler(intervalMs: number = 60000): () => void {
+export function startScheduler(intervalMs = 60000): () => void {
   schedulerLogger.info({ intervalMs }, 'Starting scheduler');
 
   const intervalId = setInterval(async () => {

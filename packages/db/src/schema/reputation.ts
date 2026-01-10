@@ -1,4 +1,4 @@
-import { boolean, decimal, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, decimal, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { apps } from './apps.js';
 
 // ===========================================

@@ -160,7 +160,7 @@ let metricsServer: http.Server | null = null;
 /**
  * Start a simple HTTP server for Prometheus to scrape metrics
  */
-export function startMetricsServer(port: number = 9090): void {
+export function startMetricsServer(port = 9090): void {
   if (metricsServer) {
     logger.warn('Metrics server already running');
     return;

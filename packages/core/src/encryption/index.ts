@@ -165,7 +165,7 @@ export function generateKey(): string {
 /**
  * Generate a random secret (for API keys, webhook secrets, etc.)
  */
-export function generateSecret(length: number = 32): string {
+export function generateSecret(length = 32): string {
   return randomBytes(length).toString('base64url');
 }
 
@@ -173,7 +173,7 @@ export function generateSecret(length: number = 32): string {
  * Generate a prefixed API key
  * Format: prefix_randomSecret
  */
-export function generateApiKey(prefix: string = 'mq_live'): {
+export function generateApiKey(prefix = 'mq_live'): {
   key: string;
   prefix: string;
 } {

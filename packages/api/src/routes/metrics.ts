@@ -5,7 +5,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
   // Prometheus metrics endpoint
   // This should NOT be rate-limited or require authentication
   // but should be protected at the infrastructure level (e.g., only accessible internally)
-  app.get('/metrics', async (request, reply) => {
+  app.get('/metrics', async (_request, reply) => {
     const metrics = await getMetrics();
 
     reply

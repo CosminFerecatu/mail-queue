@@ -67,13 +67,13 @@ export async function addToSuppressionList(options: AddSuppressionOptions): Prom
     );
 
     return {
-      id: updated!.id,
-      appId: updated!.appId,
-      emailAddress: updated!.emailAddress,
-      reason: updated!.reason,
-      sourceEmailId: updated!.sourceEmailId,
-      expiresAt: updated!.expiresAt,
-      createdAt: updated!.createdAt,
+      id: updated?.id,
+      appId: updated?.appId,
+      emailAddress: updated?.emailAddress,
+      reason: updated?.reason,
+      sourceEmailId: updated?.sourceEmailId,
+      expiresAt: updated?.expiresAt,
+      createdAt: updated?.createdAt,
     };
   }
 
@@ -95,13 +95,13 @@ export async function addToSuppressionList(options: AddSuppressionOptions): Prom
   );
 
   return {
-    id: created!.id,
-    appId: created!.appId,
-    emailAddress: created!.emailAddress,
-    reason: created!.reason,
-    sourceEmailId: created!.sourceEmailId,
-    expiresAt: created!.expiresAt,
-    createdAt: created!.createdAt,
+    id: created?.id,
+    appId: created?.appId,
+    emailAddress: created?.emailAddress,
+    reason: created?.reason,
+    sourceEmailId: created?.sourceEmailId,
+    expiresAt: created?.expiresAt,
+    createdAt: created?.createdAt,
   };
 }
 

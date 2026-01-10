@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, sql, count } from 'drizzle-orm';
-import { getDatabase, emails, emailEvents, appReputation, queues } from '@mail-queue/db';
+import { getDatabase, emails, emailEvents, appReputation } from '@mail-queue/db';
 import type {
   AnalyticsOverview,
   DeliveryMetrics,
@@ -488,8 +488,8 @@ export async function getReputationScore(appId: string): Promise<ReputationScore
 
   // Generate recommendations based on metrics
   const recommendations: string[] = [];
-  const bounceRate = parseFloat(reputation.bounceRate24h ?? '0');
-  const complaintRate = parseFloat(reputation.complaintRate24h ?? '0');
+  const bounceRate = Number.parseFloat(reputation.bounceRate24h ?? '0');
+  const complaintRate = Number.parseFloat(reputation.complaintRate24h ?? '0');
 
   if (bounceRate > 5) {
     recommendations.push('High bounce rate detected. Clean your email list and verify addresses before sending.');
@@ -509,7 +509,7 @@ export async function getReputationScore(appId: string): Promise<ReputationScore
 
   return {
     appId,
-    score: parseFloat(reputation.reputationScore ?? '100'),
+    score: Number.parseFloat(reputation.reputationScore ?? '100'),
     bounceRate24h: bounceRate,
     complaintRate24h: complaintRate,
     isThrottled: reputation.isThrottled,
@@ -608,7 +608,7 @@ export async function updateAppReputation(appId: string): Promise<UpdateReputati
     .where(eq(appReputation.appId, appId))
     .limit(1);
 
-  const previousScore = parseFloat(existing?.score ?? '100');
+  const previousScore = Number.parseFloat(existing?.score ?? '100');
 
   // Upsert reputation
   await db

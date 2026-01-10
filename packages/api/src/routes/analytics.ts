@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { AnalyticsQuerySchema } from '@mail-queue/core';
 import {
   getAnalyticsOverview,
   getDeliveryMetrics,

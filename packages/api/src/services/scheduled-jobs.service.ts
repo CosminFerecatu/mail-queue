@@ -69,7 +69,7 @@ function calculateNextRunTime(cronExpression: string, timezone: string): Date | 
 /**
  * Validate a cron expression
  */
-export function validateCronExpression(cronExpression: string, timezone: string = 'UTC'): boolean {
+export function validateCronExpression(cronExpression: string, timezone = 'UTC'): boolean {
   try {
     parseExpression(cronExpression, { tz: timezone });
     return true;
@@ -128,24 +128,24 @@ export async function createScheduledJob(
     .returning();
 
   logger.info(
-    { jobId: created!.id, appId, queueId: queue.id, name: input.name },
+    { jobId: created?.id, appId, queueId: queue.id, name: input.name },
     'Scheduled job created'
   );
 
   return {
-    id: created!.id,
-    appId: created!.appId,
-    queueId: created!.queueId,
+    id: created?.id,
+    appId: created?.appId,
+    queueId: created?.queueId,
     queueName: queue.name,
-    name: created!.name,
-    cronExpression: created!.cronExpression,
-    timezone: created!.timezone,
-    emailTemplate: created!.emailTemplate as EmailTemplate,
-    isActive: created!.isActive,
-    lastRunAt: created!.lastRunAt,
-    nextRunAt: created!.nextRunAt,
-    createdAt: created!.createdAt,
-    updatedAt: created!.updatedAt,
+    name: created?.name,
+    cronExpression: created?.cronExpression,
+    timezone: created?.timezone,
+    emailTemplate: created?.emailTemplate as EmailTemplate,
+    isActive: created?.isActive,
+    lastRunAt: created?.lastRunAt,
+    nextRunAt: created?.nextRunAt,
+    createdAt: created?.createdAt,
+    updatedAt: created?.updatedAt,
   };
 }
 
@@ -278,7 +278,7 @@ export async function updateScheduledJob(
   }
 
   const now = new Date();
-  const [updated] = await db
+  const [_updated] = await db
     .update(scheduledJobs)
     .set({
       ...(input.name && { name: input.name }),

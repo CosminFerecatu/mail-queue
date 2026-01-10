@@ -1,5 +1,5 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
-import { getDatabase, emails, queues, emailEvents, suppressionList, type EmailRow } from '@mail-queue/db';
+import { getDatabase, emails, queues, emailEvents, suppressionList } from '@mail-queue/db';
 import {
   type CreateEmailInput,
   type CreateBatchEmailInput,
@@ -46,7 +46,7 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   }
 
   for (let i = 0; i < input.to.length; i++) {
-    const toValidation = validateEmail(input.to[i]!.email);
+    const toValidation = validateEmail(input.to[i]?.email);
     if (!toValidation.isValid) {
       validationErrors.push({ path: `to[${i}].email`, message: toValidation.errors.join(', ') });
     }
@@ -186,9 +186,9 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   );
 
   return {
-    id: createdEmail!.id,
-    status: createdEmail!.status,
-    queuedAt: createdEmail!.createdAt,
+    id: createdEmail?.id,
+    status: createdEmail?.status,
+    queuedAt: createdEmail?.createdAt,
   };
 }
 

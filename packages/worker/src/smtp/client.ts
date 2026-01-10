@@ -117,7 +117,7 @@ async function getConnection(smtpConfig: SmtpClientConfig): Promise<SmtpConnecti
     }, CONNECTION_TIMEOUT);
 
     const checkInterval = setInterval(() => {
-      const available = pool!.find((c) => !c.inUse);
+      const available = pool?.find((c) => !c.inUse);
       if (available) {
         clearTimeout(timeout);
         clearInterval(checkInterval);
@@ -129,7 +129,7 @@ async function getConnection(smtpConfig: SmtpClientConfig): Promise<SmtpConnecti
   });
 }
 
-function releaseConnection(smtpConfig: SmtpClientConfig, connection: SmtpConnection): void {
+function releaseConnection(_smtpConfig: SmtpClientConfig, connection: SmtpConnection): void {
   connection.inUse = false;
   connection.lastUsed = Date.now();
 }

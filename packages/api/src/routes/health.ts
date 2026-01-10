@@ -14,7 +14,7 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   }));
 
   // Detailed health check
-  app.get('/health/detailed', async (request, reply) => {
+  app.get('/health/detailed', async (_request, reply) => {
     const checks: Record<string, { status: HealthCheckStatus; latencyMs?: number; message?: string }> = {};
 
     // Check PostgreSQL
@@ -78,7 +78,7 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   }));
 
   // Readiness probe (for k8s)
-  app.get('/health/ready', async (request, reply) => {
+  app.get('/health/ready', async (_request, reply) => {
     const pgHealthy = await checkDatabaseConnection(getDatabase());
     const redisHealthy = await checkRedisConnection();
 

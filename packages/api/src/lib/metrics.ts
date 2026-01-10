@@ -5,7 +5,7 @@ import {
   Gauge,
   collectDefaultMetrics,
 } from 'prom-client';
-import { QUEUE_NAMES, type QueueName } from '@mail-queue/core';
+import { QUEUE_NAMES } from '@mail-queue/core';
 import { getQueueStats } from './queue.js';
 import { logger } from './logger.js';
 

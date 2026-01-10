@@ -179,7 +179,7 @@ export class IdempotencyConflictError extends ConflictError {
   override readonly code = 'IDEMPOTENCY_CONFLICT';
 
   constructor(idempotencyKey: string, existingEmailId: string) {
-    super(`Request with idempotency key already processed`, {
+    super('Request with idempotency key already processed', {
       idempotencyKey,
       existingEmailId,
     });

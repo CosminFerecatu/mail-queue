@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDatabase, trackingLinks, emails, emailEvents } from '@mail-queue/db';
 import {
   type RecordTrackingJobData,
@@ -110,12 +110,12 @@ export async function createTrackingLink(
   logger.debug({ emailId, shortCode, originalUrl }, 'Tracking link created');
 
   return {
-    id: link!.id,
-    emailId: link!.emailId,
-    shortCode: link!.shortCode,
-    originalUrl: link!.originalUrl,
-    clickCount: link!.clickCount,
-    createdAt: link!.createdAt,
+    id: link?.id,
+    emailId: link?.emailId,
+    shortCode: link?.shortCode,
+    originalUrl: link?.originalUrl,
+    clickCount: link?.clickCount,
+    createdAt: link?.createdAt,
   };
 }
 

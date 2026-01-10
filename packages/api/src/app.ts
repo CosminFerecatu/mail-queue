@@ -5,7 +5,6 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifySensible from '@fastify/sensible';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { config, isDevelopment } from './config.js';
-import { logger } from './lib/logger.js';
 import { getRedis } from './lib/redis.js';
 
 // Middleware
@@ -91,7 +90,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(fastifyCompress);
 
   await app.register(fastifyCors, {
-    origin: isDevelopment() ? true : false,
+    origin: !!isDevelopment(),
     credentials: true,
   });
 
@@ -105,7 +104,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       const apiKey = request.headers['authorization'];
       return apiKey ?? request.ip;
     },
-    errorResponseBuilder: (request, context) => ({
+    errorResponseBuilder: (_request, context) => ({
       success: false,
       error: {
         code: 'RATE_LIMIT_EXCEEDED',

@@ -26,7 +26,6 @@ export function initTracing(): void {
   const tracingEnabled = process.env['OTEL_TRACING_ENABLED'] !== 'false';
 
   if (!tracingEnabled) {
-    console.log('OpenTelemetry tracing is disabled');
     return;
   }
 
@@ -93,8 +92,6 @@ export function initTracing(): void {
   // Start the SDK
   sdk.start();
 
-  console.log(`OpenTelemetry tracing initialized for ${serviceName}`);
-
   // Graceful shutdown
   process.on('SIGTERM', () => {
     shutdown();
@@ -108,7 +105,6 @@ export async function shutdown(): Promise<void> {
   if (sdk) {
     try {
       await sdk.shutdown();
-      console.log('OpenTelemetry SDK shut down successfully');
     } catch (error) {
       console.error('Error shutting down OpenTelemetry SDK:', error);
     }

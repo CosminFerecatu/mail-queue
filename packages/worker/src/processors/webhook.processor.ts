@@ -158,7 +158,7 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
 
       // Throw to trigger BullMQ retry
       throw new Error(`Webhook delivery failed: ${displayError}`);
-    } else {
+    }
       // Max attempts reached - mark as failed
       await db
         .update(webhookDeliveries)
@@ -174,9 +174,6 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
         { totalAttempts: attempt },
         'Webhook delivery failed permanently after max attempts'
       );
-
-      // Don't throw - job is complete (failed permanently)
-    }
   }
 }
 

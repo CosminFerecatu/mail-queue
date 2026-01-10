@@ -207,7 +207,7 @@ export async function getQueueStats(id: string, appId: string): Promise<QueueSta
 
   // Get BullMQ queue stats
   const bullQueue = getEmailQueue();
-  const [waiting, active, delayed, failed] = await Promise.all([
+  const [_waiting, _active, _delayed, _failed] = await Promise.all([
     bullQueue.getWaitingCount(),
     bullQueue.getActiveCount(),
     bullQueue.getDelayedCount(),

@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { ApiKeyRow } from '@mail-queue/db';
 import type { ApiKeyScope } from '@mail-queue/core';
 import { validateApiKey, hasScope, hasAnyScope, checkIpAllowlist, type ApiKeyWithApp } from '../services/apikey.service.js';
 import { config } from '../config.js';
@@ -119,7 +118,7 @@ export async function requireAdminAuth(
 }
 
 export function requireScope(scope: ApiKeyScope) {
-  return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     await requireAuth(request, reply);
 
     // Already sent a response
@@ -141,7 +140,7 @@ export function requireScope(scope: ApiKeyScope) {
 }
 
 export function requireAnyScope(scopes: ApiKeyScope[]) {
-  return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     await requireAuth(request, reply);
 
     // Already sent a response

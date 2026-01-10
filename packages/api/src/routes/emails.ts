@@ -11,7 +11,7 @@ import {
   retryFailedEmail,
 } from '../services/email.service.js';
 import { getQueueByName } from '../services/queue.service.js';
-import { requireAuth, requireScope, requireAnyScope } from '../middleware/auth.js';
+import { requireScope } from '../middleware/auth.js';
 import { getRateLimiter } from '../lib/rate-limiter.js';
 import { recordRateLimitHit } from '../lib/metrics.js';
 import { config } from '../config.js';

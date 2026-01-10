@@ -191,7 +191,7 @@ export function normalizeEmail(email: string, removeSubAddressing = false): stri
       const domain = normalized.substring(atIndex + 1);
       const plusIndex = localPart.indexOf('+');
       if (plusIndex > 0) {
-        normalized = localPart.substring(0, plusIndex) + '@' + domain;
+        normalized = `${localPart.substring(0, plusIndex)}@${domain}`;
       }
     }
   }

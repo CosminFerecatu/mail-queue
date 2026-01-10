@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
 import { eq, and } from 'drizzle-orm';
-import { getDatabase, emails, emailEvents, suppressionList, appReputation } from '@mail-queue/db';
+import { getDatabase, emails, emailEvents, suppressionList } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
 
 const bounceLogger = logger.child({ processor: 'bounce' });

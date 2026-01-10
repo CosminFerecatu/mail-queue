@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, lte, count } from 'drizzle-orm';
+import { eq, and, desc, lte, count } from 'drizzle-orm';
 import { getDatabase, webhookDeliveries, apps, emails, queues } from '@mail-queue/db';
 import {
   type WebhookEventType,
@@ -140,7 +140,7 @@ export async function createWebhookDelivery(
     })
     .returning({ id: webhookDeliveries.id });
 
-  const deliveryId = delivery!.id;
+  const deliveryId = delivery?.id;
 
   // Queue the delivery job
   const jobData: DeliverWebhookJobData = {

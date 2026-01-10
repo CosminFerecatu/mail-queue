@@ -32,7 +32,8 @@
       "recommended": true,
       "complexity": {
         "noUselessFragments": "warn",
-        "noForEach": "off"
+        "noForEach": "off",
+        "useLiteralKeys": "off"
       },
       "correctness": {
         "noUnusedImports": "error",

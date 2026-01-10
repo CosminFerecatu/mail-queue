@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import { eq, and, gte, lte, sql, count, ne } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, count } from 'drizzle-orm';
 import { getDatabase, emails, emailEvents, appReputation, apps } from '@mail-queue/db';
 import type { AggregateStatsJobData, UpdateReputationJobData } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';

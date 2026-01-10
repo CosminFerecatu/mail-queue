@@ -72,7 +72,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
 
   if (reputation?.isThrottled && !isSandboxMode) {
     // App is throttled - delay or reject based on severity
-    const score = parseFloat(reputation.reputationScore ?? '100');
+    const score = Number.parseFloat(reputation.reputationScore ?? '100');
 
     if (score < 20) {
       // Very poor reputation - reject the email
@@ -150,7 +150,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
       .where(eq(smtpConfigs.id, queue.smtpConfigId))
       .limit(1);
 
-    if (smtpConfigRow && smtpConfigRow.isActive) {
+    if (smtpConfigRow?.isActive) {
       smtpConfig = smtpConfigFromRow(smtpConfigRow, encryptionKey);
     }
   }
