@@ -1,0 +1,32 @@
+{
+  "name": "mail-queue",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "test": "turbo test",
+    "test:coverage": "turbo test:coverage",
+    "test:integration": "turbo test:integration",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean && rm -rf node_modules",
+    "db:migrate": "pnpm --filter @mail-queue/db migrate",
+    "db:generate": "pnpm --filter @mail-queue/db generate",
+    "db:studio": "pnpm --filter @mail-queue/db studio",
+    "db:seed": "pnpm --filter @mail-queue/db seed"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
