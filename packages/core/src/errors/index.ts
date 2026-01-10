@@ -32,7 +32,7 @@ export abstract class MailQueueError extends Error {
 // ===========================================
 
 export class AuthenticationError extends MailQueueError {
-  readonly code = 'AUTHENTICATION_ERROR';
+  readonly code: string = 'AUTHENTICATION_ERROR';
   readonly statusCode = 401;
 }
 
@@ -57,7 +57,7 @@ export class ExpiredTokenError extends AuthenticationError {
 // ===========================================
 
 export class AuthorizationError extends MailQueueError {
-  readonly code = 'AUTHORIZATION_ERROR';
+  readonly code: string = 'AUTHORIZATION_ERROR';
   readonly statusCode = 403;
 }
 
@@ -90,7 +90,7 @@ export class AppInactiveError extends AuthorizationError {
 // ===========================================
 
 export class NotFoundError extends MailQueueError {
-  readonly code = 'NOT_FOUND';
+  readonly code: string = 'NOT_FOUND';
   readonly statusCode = 404;
 }
 
@@ -131,7 +131,7 @@ export class SmtpConfigNotFoundError extends NotFoundError {
 // ===========================================
 
 export class ValidationError extends MailQueueError {
-  readonly code = 'VALIDATION_ERROR';
+  readonly code: string = 'VALIDATION_ERROR';
   readonly statusCode = 400;
   readonly errors: Array<{ path: string; message: string }>;
 
@@ -163,7 +163,7 @@ export class SuppressedEmailError extends MailQueueError {
 // ===========================================
 
 export class ConflictError extends MailQueueError {
-  readonly code = 'CONFLICT';
+  readonly code: string = 'CONFLICT';
   readonly statusCode = 409;
 }
 
@@ -191,7 +191,7 @@ export class IdempotencyConflictError extends ConflictError {
 // ===========================================
 
 export class RateLimitError extends MailQueueError {
-  readonly code = 'RATE_LIMIT_EXCEEDED';
+  readonly code: string = 'RATE_LIMIT_EXCEEDED';
   readonly statusCode = 429;
   readonly retryAfter: number;
 
@@ -235,7 +235,7 @@ export class MonthlyLimitError extends RateLimitError {
 // ===========================================
 
 export class InternalError extends MailQueueError {
-  readonly code = 'INTERNAL_ERROR';
+  readonly code: string = 'INTERNAL_ERROR';
   readonly statusCode = 500;
 }
 
@@ -263,7 +263,7 @@ export class QueueError extends InternalError {
 // ===========================================
 
 export class ServiceUnavailableError extends MailQueueError {
-  readonly code = 'SERVICE_UNAVAILABLE';
+  readonly code: string = 'SERVICE_UNAVAILABLE';
   readonly statusCode = 503;
 }
 

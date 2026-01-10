@@ -1,0 +1,128 @@
+import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
+import fastifyCompress from '@fastify/compress';
+import fastifyCors from '@fastify/cors';
+import fastifyHelmet from '@fastify/helmet';
+import fastifySensible from '@fastify/sensible';
+import fastifyRateLimit from '@fastify/rate-limit';
+import { config, isDevelopment } from './config.js';
+import { logger } from './lib/logger.js';
+import { getRedis } from './lib/redis.js';
+
+// Middleware
+import { authPlugin } from './middleware/auth.js';
+
+// Routes
+import { healthRoutes } from './routes/health.js';
+import { emailRoutes } from './routes/emails.js';
+import { appRoutes } from './routes/apps.js';
+import { apiKeyRoutes } from './routes/apikeys.js';
+import { queueRoutes } from './routes/queues.js';
+import { smtpConfigRoutes } from './routes/smtp-configs.js';
+
+export async function buildApp(): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: {
+      level: config.logLevel,
+      ...(isDevelopment() && {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+          },
+        },
+      }),
+    },
+    requestIdHeader: 'x-request-id',
+    requestIdLogLabel: 'requestId',
+    disableRequestLogging: false,
+  });
+
+  // Error handler
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+
+    // Log error
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, 'Server error');
+    } else {
+      request.log.warn({ err: error }, 'Client error');
+    }
+
+    // Send response
+    reply.status(statusCode).send({
+      success: false,
+      error: {
+        code: error.code ?? 'INTERNAL_ERROR',
+        message: statusCode >= 500 && !isDevelopment() ? 'Internal server error' : error.message,
+        ...(isDevelopment() && { stack: error.stack }),
+      },
+    });
+  });
+
+  // Not found handler
+  app.setNotFoundHandler((request, reply) => {
+    reply.status(404).send({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: `Route ${request.method} ${request.url} not found`,
+      },
+    });
+  });
+
+  // Register plugins
+  await app.register(fastifySensible);
+
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: false, // Disable for API
+  });
+
+  await app.register(fastifyCompress);
+
+  await app.register(fastifyCors, {
+    origin: isDevelopment() ? true : false,
+    credentials: true,
+  });
+
+  await app.register(fastifyRateLimit, {
+    global: true,
+    max: config.globalRateLimit,
+    timeWindow: '1 minute',
+    redis: getRedis(),
+    keyGenerator: (request) => {
+      // Use API key or IP for rate limiting
+      const apiKey = request.headers['authorization'];
+      return apiKey ?? request.ip;
+    },
+    errorResponseBuilder: (request, context) => ({
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: `Rate limit exceeded. Retry after ${Math.ceil(context.ttl / 1000)} seconds`,
+        retryAfter: Math.ceil(context.ttl / 1000),
+      },
+    }),
+  });
+
+  // Register auth plugin
+  await app.register(authPlugin);
+
+  // Register routes
+  await app.register(healthRoutes, { prefix: '/v1' });
+  await app.register(emailRoutes, { prefix: '/v1' });
+  await app.register(appRoutes, { prefix: '/v1' });
+  await app.register(apiKeyRoutes, { prefix: '/v1' });
+  await app.register(queueRoutes, { prefix: '/v1' });
+  await app.register(smtpConfigRoutes, { prefix: '/v1' });
+
+  // Root route
+  app.get('/', async () => ({
+    name: 'mail-queue-api',
+    version: process.env['npm_package_version'] ?? '0.0.1',
+    docs: '/v1/docs',
+  }));
+
+  return app;
+}

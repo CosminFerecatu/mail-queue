@@ -114,13 +114,24 @@ export const emailEvents = pgTable(
       .references(() => emails.id, { onDelete: 'cascade' }),
     eventType: emailEventTypeEnum('event_type').notNull(),
     eventData: jsonb('event_data').$type<{
+      // Sent event data
+      messageId?: string;
+      accepted?: string[];
+      rejected?: string[];
+      // Click/Open tracking data
       linkUrl?: string;
       userAgent?: string;
       ipAddress?: string;
+      // Bounce data
       bounceType?: 'hard' | 'soft';
       bounceSubType?: string;
       bounceMessage?: string;
+      // Complaint data
       complaintType?: string;
+      // Retry/cancel data
+      retry?: boolean;
+      previousAttempts?: number;
+      cancelled?: boolean;
     }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

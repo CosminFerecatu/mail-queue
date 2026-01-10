@@ -1,0 +1,64 @@
+import { z } from 'zod';
+
+const ConfigSchema = z.object({
+  // Worker
+  concurrency: z.coerce.number().int().min(1).max(100).default(10),
+  nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
+
+  // Database
+  databaseUrl: z.string().url(),
+
+  // Redis
+  redisUrl: z.string().url(),
+
+  // Security
+  encryptionKey: z.string().length(64),
+
+  // SMTP (default/fallback)
+  smtpHost: z.string().optional(),
+  smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
+  smtpSecure: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  smtpUser: z.string().optional(),
+  smtpPass: z.string().optional(),
+
+  // Logging
+  logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+});
+
+export type Config = z.infer<typeof ConfigSchema>;
+
+function loadConfig(): Config {
+  const result = ConfigSchema.safeParse({
+    concurrency: process.env['WORKER_CONCURRENCY'],
+    nodeEnv: process.env['NODE_ENV'],
+    databaseUrl: process.env['DATABASE_URL'],
+    redisUrl: process.env['REDIS_URL'],
+    encryptionKey: process.env['ENCRYPTION_KEY'],
+    smtpHost: process.env['SMTP_HOST'],
+    smtpPort: process.env['SMTP_PORT'],
+    smtpSecure: process.env['SMTP_SECURE'],
+    smtpUser: process.env['SMTP_USER'],
+    smtpPass: process.env['SMTP_PASS'],
+    logLevel: process.env['LOG_LEVEL'],
+  });
+
+  if (!result.success) {
+    const errors = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
+    throw new Error(`Invalid configuration:\n${errors.join('\n')}`);
+  }
+
+  return result.data;
+}
+
+export const config = loadConfig();
+
+export function isDevelopment(): boolean {
+  return config.nodeEnv === 'development';
+}
+
+export function isProduction(): boolean {
+  return config.nodeEnv === 'production';
+}
