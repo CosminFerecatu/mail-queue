@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ApiKeyScope } from '@mail-queue/core';
+import jwt from 'jsonwebtoken';
 import {
   validateApiKey,
   hasScope,
@@ -9,11 +10,19 @@ import {
 } from '../services/apikey.service.js';
 import { config } from '../config.js';
 
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
     apiKey?: ApiKeyWithApp;
     appId?: string;
     isAdmin?: boolean;
+    userId?: string;
+    userRole?: string;
   }
 }
 
@@ -21,6 +30,8 @@ export async function authPlugin(app: FastifyInstance): Promise<void> {
   app.decorateRequest('apiKey', undefined);
   app.decorateRequest('appId', undefined);
   app.decorateRequest('isAdmin', false);
+  app.decorateRequest('userId', undefined);
+  app.decorateRequest('userRole', undefined);
 }
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -68,36 +79,51 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
     return;
   }
 
-  // Validate API key
+  // Try to validate as API key first
   const apiKey = await validateApiKey(apiKeyString);
 
-  if (!apiKey) {
-    reply.status(401).send({
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: 'Invalid or expired API key',
-      },
-    });
+  if (apiKey) {
+    // Check IP allowlist
+    const clientIp = request.ip;
+    if (!checkIpAllowlist(apiKey, clientIp)) {
+      reply.status(403).send({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Request from this IP address is not allowed',
+        },
+      });
+      return;
+    }
+
+    // Attach API key to request
+    request.apiKey = apiKey;
+    request.appId = apiKey.appId;
     return;
   }
 
-  // Check IP allowlist
-  const clientIp = request.ip;
-  if (!checkIpAllowlist(apiKey, clientIp)) {
-    reply.status(403).send({
-      success: false,
-      error: {
-        code: 'FORBIDDEN',
-        message: 'Request from this IP address is not allowed',
-      },
-    });
+  // Try to validate as JWT token (for dashboard users)
+  try {
+    const payload = jwt.verify(apiKeyString, config.jwtSecret) as JwtPayload;
+    request.userId = payload.sub;
+    request.userRole = payload.role;
+    // Dashboard users with super_admin or admin role get admin access
+    if (payload.role === 'super_admin' || payload.role === 'admin') {
+      request.isAdmin = true;
+    }
     return;
+  } catch {
+    // JWT verification failed
   }
 
-  // Attach to request
-  request.apiKey = apiKey;
-  request.appId = apiKey.appId;
+  // Neither API key nor JWT was valid
+  reply.status(401).send({
+    success: false,
+    error: {
+      code: 'UNAUTHORIZED',
+      message: 'Invalid or expired token',
+    },
+  });
 }
 
 export async function requireAdminAuth(
@@ -194,5 +220,18 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
   if (apiKey && checkIpAllowlist(apiKey, request.ip)) {
     request.apiKey = apiKey;
     request.appId = apiKey.appId;
+    return;
+  }
+
+  // Try to validate as JWT token (for dashboard users)
+  try {
+    const payload = jwt.verify(apiKeyString, config.jwtSecret) as JwtPayload;
+    request.userId = payload.sub;
+    request.userRole = payload.role;
+    if (payload.role === 'super_admin' || payload.role === 'admin') {
+      request.isAdmin = true;
+    }
+  } catch {
+    // JWT verification failed, but this is optional auth so we don't error
   }
 }

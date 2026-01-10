@@ -87,12 +87,15 @@ export default function AnalyticsPage() {
             </TabsList>
           </Tabs>
 
-          <Select value={selectedApp} onValueChange={setSelectedApp}>
+          <Select
+            value={selectedApp || 'all'}
+            onValueChange={(value) => setSelectedApp(value === 'all' ? '' : value)}
+          >
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="All Applications" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Applications</SelectItem>
+              <SelectItem value="all">All Applications</SelectItem>
               {appsData?.data.map((app) => (
                 <SelectItem key={app.id} value={app.id}>
                   {app.name}

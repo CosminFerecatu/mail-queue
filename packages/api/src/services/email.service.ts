@@ -192,12 +192,18 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   };
 }
 
-export async function getEmailById(emailId: string, appId: string): Promise<EmailResponse> {
+export async function getEmailById(emailId: string, appId?: string): Promise<EmailResponse> {
   const db = getDatabase();
+
+  const conditions = [eq(emails.id, emailId)];
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
 
   const [email] = await db
     .select({
       id: emails.id,
+      appId: emails.appId,
       queueId: emails.queueId,
       queueName: queues.name,
       messageId: emails.messageId,
@@ -216,7 +222,7 @@ export async function getEmailById(emailId: string, appId: string): Promise<Emai
     })
     .from(emails)
     .innerJoin(queues, eq(emails.queueId, queues.id))
-    .where(and(eq(emails.id, emailId), eq(emails.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!email) {
@@ -245,14 +251,19 @@ export async function getEmailById(emailId: string, appId: string): Promise<Emai
   };
 }
 
-export async function getEmailEvents(emailId: string, appId: string): Promise<EmailEvent[]> {
+export async function getEmailEvents(emailId: string, appId?: string): Promise<EmailEvent[]> {
   const db = getDatabase();
 
-  // First verify the email belongs to the app
+  // First verify the email exists (and belongs to the app if appId provided)
+  const conditions = [eq(emails.id, emailId)];
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
+
   const [email] = await db
     .select({ id: emails.id })
     .from(emails)
-    .where(and(eq(emails.id, emailId), eq(emails.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!email) {
@@ -274,13 +285,18 @@ export async function getEmailEvents(emailId: string, appId: string): Promise<Em
   }));
 }
 
-export async function cancelScheduledEmail(emailId: string, appId: string): Promise<void> {
+export async function cancelScheduledEmail(emailId: string, appId?: string): Promise<void> {
   const db = getDatabase();
+
+  const conditions = [eq(emails.id, emailId)];
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
 
   const [email] = await db
     .select()
     .from(emails)
-    .where(and(eq(emails.id, emailId), eq(emails.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!email) {
@@ -304,7 +320,7 @@ export async function cancelScheduledEmail(emailId: string, appId: string): Prom
     createdAt: new Date(),
   });
 
-  logger.info({ emailId, appId }, 'Email cancelled');
+  logger.info({ emailId, appId: email.appId }, 'Email cancelled');
 }
 
 export type EmailStatus =
@@ -346,6 +362,7 @@ export async function getEmailsByAppId(
     db
       .select({
         id: emails.id,
+        appId: emails.appId,
         queueId: emails.queueId,
         queueName: queues.name,
         messageId: emails.messageId,
@@ -396,16 +413,96 @@ export async function getEmailsByAppId(
   };
 }
 
+export async function getAllEmails(
+  options: GetEmailsOptions = {}
+): Promise<{ emails: EmailResponse[]; total: number }> {
+  const db = getDatabase();
+  const { limit = 50, offset = 0, status, queueId } = options;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (status) {
+    conditions.push(eq(emails.status, status));
+  }
+
+  if (queueId) {
+    conditions.push(eq(emails.queueId, queueId));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [emailList, countResult] = await Promise.all([
+    db
+      .select({
+        id: emails.id,
+        appId: emails.appId,
+        queueId: emails.queueId,
+        queueName: queues.name,
+        messageId: emails.messageId,
+        fromAddress: emails.fromAddress,
+        fromName: emails.fromName,
+        toAddresses: emails.toAddresses,
+        subject: emails.subject,
+        status: emails.status,
+        retryCount: emails.retryCount,
+        lastError: emails.lastError,
+        scheduledAt: emails.scheduledAt,
+        sentAt: emails.sentAt,
+        deliveredAt: emails.deliveredAt,
+        createdAt: emails.createdAt,
+        metadata: emails.metadata,
+      })
+      .from(emails)
+      .innerJoin(queues, eq(emails.queueId, queues.id))
+      .where(whereClause)
+      .orderBy(desc(emails.createdAt))
+      .limit(limit)
+      .offset(offset),
+    whereClause
+      ? db.select({ count: sql<number>`count(*)::int` }).from(emails).where(whereClause)
+      : db.select({ count: sql<number>`count(*)::int` }).from(emails),
+  ]);
+
+  return {
+    emails: emailList.map((email) => ({
+      id: email.id,
+      queueId: email.queueId,
+      queueName: email.queueName,
+      messageId: email.messageId,
+      from: {
+        email: email.fromAddress,
+        name: email.fromName ?? undefined,
+      },
+      to: email.toAddresses,
+      subject: email.subject,
+      status: email.status,
+      retryCount: email.retryCount,
+      lastError: email.lastError,
+      scheduledAt: email.scheduledAt,
+      sentAt: email.sentAt,
+      deliveredAt: email.deliveredAt,
+      createdAt: email.createdAt,
+      metadata: email.metadata,
+    })),
+    total: countResult[0]?.count ?? 0,
+  };
+}
+
 export async function retryFailedEmail(
   emailId: string,
-  appId: string
+  appId?: string
 ): Promise<{ id: string; status: string; message: string }> {
   const db = getDatabase();
+
+  const conditions = [eq(emails.id, emailId)];
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
 
   const [email] = await db
     .select()
     .from(emails)
-    .where(and(eq(emails.id, emailId), eq(emails.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!email) {
@@ -439,14 +536,17 @@ export async function retryFailedEmail(
   // Re-queue the job
   const jobData: SendEmailJobData = {
     emailId,
-    appId,
+    appId: email.appId,
     queueId: email.queueId,
     priority: 5, // Default priority for retries
   };
 
   await addEmailJob(jobData);
 
-  logger.info({ emailId, appId, previousAttempts: email.retryCount }, 'Email retry queued');
+  logger.info(
+    { emailId, appId: email.appId, previousAttempts: email.retryCount },
+    'Email retry queued'
+  );
 
   return {
     id: emailId,

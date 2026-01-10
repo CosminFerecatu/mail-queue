@@ -163,14 +163,16 @@ export default function EmailsPage() {
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="flex gap-2">
             <Select
-              value={filters.status}
-              onValueChange={(value) => setFilters({ ...filters, status: value })}
+              value={filters.status || 'all'}
+              onValueChange={(value) =>
+                setFilters({ ...filters, status: value === 'all' ? '' : value })
+              }
             >
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="queued">Queued</SelectItem>
                 <SelectItem value="processing">Processing</SelectItem>
                 <SelectItem value="sent">Sent</SelectItem>
@@ -181,14 +183,16 @@ export default function EmailsPage() {
             </Select>
 
             <Select
-              value={filters.appId}
-              onValueChange={(value) => setFilters({ ...filters, appId: value, queueId: '' })}
+              value={filters.appId || 'all'}
+              onValueChange={(value) =>
+                setFilters({ ...filters, appId: value === 'all' ? '' : value, queueId: '' })
+              }
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Apps" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Apps</SelectItem>
+                <SelectItem value="all">All Apps</SelectItem>
                 {appsData?.data.map((app) => (
                   <SelectItem key={app.id} value={app.id}>
                     {app.name}
@@ -198,14 +202,16 @@ export default function EmailsPage() {
             </Select>
 
             <Select
-              value={filters.queueId}
-              onValueChange={(value) => setFilters({ ...filters, queueId: value })}
+              value={filters.queueId || 'all'}
+              onValueChange={(value) =>
+                setFilters({ ...filters, queueId: value === 'all' ? '' : value })
+              }
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Queues" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Queues</SelectItem>
+                <SelectItem value="all">All Queues</SelectItem>
                 {queuesData?.data.map((queue) => (
                   <SelectItem key={queue.id} value={queue.id}>
                     {queue.name}

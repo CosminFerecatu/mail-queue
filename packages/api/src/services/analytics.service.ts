@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, sql, count } from 'drizzle-orm';
-import { getDatabase, emails, emailEvents, appReputation } from '@mail-queue/db';
+import { getDatabase, emails, emailEvents, appReputation, apps, queues } from '@mail-queue/db';
 import type {
   AnalyticsOverview,
   DeliveryMetrics,
@@ -10,6 +10,156 @@ import type {
   ReputationScore,
 } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
+
+// ===========================================
+// Global Analytics Overview (for dashboard admins)
+// ===========================================
+
+export interface GetGlobalAnalyticsOverviewOptions {
+  from: Date;
+  to: Date;
+}
+
+export async function getGlobalAnalyticsOverview(
+  options: GetGlobalAnalyticsOverviewOptions
+): Promise<{
+  totalEmailsToday: number;
+  totalEmailsMonth: number;
+  deliveryRate: number;
+  bounceRate: number;
+  openRate: number;
+  clickRate: number;
+  activeApps: number;
+  activeQueues: number;
+  pendingEmails: number;
+  processingEmails: number;
+}> {
+  const { from, to } = options;
+  const db = getDatabase();
+
+  // Get today's date range
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  // Get this month's date range
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  // Get total emails today
+  const [todayResult] = await db
+    .select({ count: count() })
+    .from(emails)
+    .where(and(gte(emails.createdAt, todayStart), lte(emails.createdAt, todayEnd)));
+
+  const totalEmailsToday = todayResult?.count ?? 0;
+
+  // Get total emails this month
+  const [monthResult] = await db
+    .select({ count: count() })
+    .from(emails)
+    .where(and(gte(emails.createdAt, monthStart), lte(emails.createdAt, to)));
+
+  const totalEmailsMonth = monthResult?.count ?? 0;
+
+  // Get status counts for rate calculations
+  const statusCounts = await db
+    .select({
+      status: emails.status,
+      count: count(),
+    })
+    .from(emails)
+    .where(and(gte(emails.createdAt, from), lte(emails.createdAt, to)))
+    .groupBy(emails.status);
+
+  let sent = 0;
+  let delivered = 0;
+  let bounced = 0;
+  let pending = 0;
+  let processing = 0;
+
+  for (const row of statusCounts) {
+    switch (row.status) {
+      case 'sent':
+        sent = row.count;
+        break;
+      case 'delivered':
+        delivered = row.count;
+        break;
+      case 'bounced':
+        bounced = row.count;
+        break;
+      case 'queued':
+        pending = row.count;
+        break;
+      case 'processing':
+        processing = row.count;
+        break;
+    }
+  }
+
+  const totalSent = sent + delivered;
+  const deliveryRate = totalSent > 0 ? (delivered / totalSent) * 100 : 0;
+  const bounceRate = totalSent > 0 ? (bounced / totalSent) * 100 : 0;
+
+  // Get engagement metrics
+  const engagementCounts = await db
+    .select({
+      eventType: emailEvents.eventType,
+      count: count(),
+    })
+    .from(emailEvents)
+    .where(
+      and(
+        gte(emailEvents.createdAt, from),
+        lte(emailEvents.createdAt, to),
+        sql`${emailEvents.eventType} IN ('opened', 'clicked')`
+      )
+    )
+    .groupBy(emailEvents.eventType);
+
+  let opened = 0;
+  let clicked = 0;
+
+  for (const row of engagementCounts) {
+    if (row.eventType === 'opened') opened = row.count;
+    if (row.eventType === 'clicked') clicked = row.count;
+  }
+
+  const openRate = delivered > 0 ? (opened / delivered) * 100 : 0;
+  const clickRate = delivered > 0 ? (clicked / delivered) * 100 : 0;
+
+  // Get active apps count
+  const [appsResult] = await db
+    .select({ count: count() })
+    .from(apps)
+    .where(eq(apps.isActive, true));
+
+  const activeApps = appsResult?.count ?? 0;
+
+  // Get active queues count
+  const [queuesResult] = await db
+    .select({ count: count() })
+    .from(queues)
+    .where(eq(queues.isPaused, false));
+
+  const activeQueues = queuesResult?.count ?? 0;
+
+  return {
+    totalEmailsToday,
+    totalEmailsMonth,
+    deliveryRate: Math.round(deliveryRate * 100) / 100,
+    bounceRate: Math.round(bounceRate * 100) / 100,
+    openRate: Math.round(openRate * 100) / 100,
+    clickRate: Math.round(clickRate * 100) / 100,
+    activeApps,
+    activeQueues,
+    pendingEmails: pending,
+    processingEmails: processing,
+  };
+}
 
 // ===========================================
 // Analytics Overview
@@ -143,7 +293,7 @@ export async function getAnalyticsOverview(
 // ===========================================
 
 export interface GetDeliveryMetricsOptions {
-  appId: string;
+  appId?: string;
   from: Date;
   to: Date;
   queueId?: string;
@@ -159,11 +309,14 @@ export async function getDeliveryMetrics(
   // Determine the date truncation based on granularity
   const dateTrunc = granularity === 'minute' ? 'minute' : granularity === 'hour' ? 'hour' : 'day';
 
-  const conditions = [
-    eq(emails.appId, appId),
+  const conditions: ReturnType<typeof eq>[] = [
     gte(emails.createdAt, from),
     lte(emails.createdAt, to),
   ];
+
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
 
   if (queueId) {
     conditions.push(eq(emails.queueId, queueId));
@@ -245,7 +398,7 @@ export async function getDeliveryMetrics(
 // ===========================================
 
 export interface GetEngagementMetricsOptions {
-  appId: string;
+  appId?: string;
   from: Date;
   to: Date;
   queueId?: string;
@@ -261,11 +414,14 @@ export async function getEngagementMetrics(
   const dateTrunc = granularity === 'minute' ? 'minute' : granularity === 'hour' ? 'hour' : 'day';
 
   // Base conditions for email events joined with emails
-  const eventConditions = [
-    eq(emails.appId, appId),
+  const eventConditions: ReturnType<typeof eq>[] = [
     gte(emailEvents.createdAt, from),
     lte(emailEvents.createdAt, to),
   ];
+
+  if (appId) {
+    eventConditions.push(eq(emails.appId, appId));
+  }
 
   if (queueId) {
     eventConditions.push(eq(emails.queueId, queueId));
@@ -360,7 +516,7 @@ export async function getEngagementMetrics(
 // ===========================================
 
 export interface GetBounceBreakdownOptions {
-  appId: string;
+  appId?: string;
   from: Date;
   to: Date;
   queueId?: string;
@@ -372,12 +528,15 @@ export async function getBounceBreakdown(
   const { appId, from, to, queueId } = options;
   const db = getDatabase();
 
-  const conditions = [
-    eq(emails.appId, appId),
+  const conditions: ReturnType<typeof eq>[] = [
     eq(emailEvents.eventType, 'bounced'),
     gte(emailEvents.createdAt, from),
     lte(emailEvents.createdAt, to),
   ];
+
+  if (appId) {
+    conditions.push(eq(emails.appId, appId));
+  }
 
   if (queueId) {
     conditions.push(eq(emails.queueId, queueId));

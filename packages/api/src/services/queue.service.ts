@@ -40,13 +40,18 @@ export async function createQueue(appId: string, input: CreateQueueInput): Promi
   return queue;
 }
 
-export async function getQueueById(id: string, appId: string): Promise<QueueRow | null> {
+export async function getQueueById(id: string, appId?: string): Promise<QueueRow | null> {
   const db = getDatabase();
+
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
 
   const [queue] = await db
     .select()
     .from(queues)
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   return queue ?? null;
@@ -88,19 +93,49 @@ export async function getQueuesByAppId(
   };
 }
 
+export async function getAllQueues(
+  options: { limit?: number; offset?: number } = {}
+): Promise<{ queues: QueueRow[]; total: number }> {
+  const db = getDatabase();
+  const { limit = 50, offset = 0 } = options;
+
+  const [queueList, countResult] = await Promise.all([
+    db
+      .select()
+      .from(queues)
+      .orderBy(desc(queues.priority), queues.name)
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: sql<number>`count(*)::int` }).from(queues),
+  ]);
+
+  return {
+    queues: queueList,
+    total: countResult[0]?.count ?? 0,
+  };
+}
+
 export async function updateQueue(
   id: string,
-  appId: string,
+  appId: string | undefined,
   input: UpdateQueueInput
 ): Promise<QueueRow | null> {
   const db = getDatabase();
+
+  // Get the queue first to know its appId for SMTP config validation
+  const existingQueue = await getQueueById(id, appId);
+  if (!existingQueue) {
+    return null;
+  }
 
   // Verify SMTP config belongs to app if being updated
   if (input.smtpConfigId) {
     const [config] = await db
       .select()
       .from(smtpConfigs)
-      .where(and(eq(smtpConfigs.id, input.smtpConfigId), eq(smtpConfigs.appId, appId)))
+      .where(
+        and(eq(smtpConfigs.id, input.smtpConfigId), eq(smtpConfigs.appId, existingQueue.appId))
+      )
       .limit(1);
 
     if (!config) {
@@ -119,45 +154,65 @@ export async function updateQueue(
   if (input.smtpConfigId !== undefined) updateData.smtpConfigId = input.smtpConfigId;
   if (input.settings !== undefined) updateData.settings = input.settings;
 
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
+
   const [updated] = await db
     .update(queues)
     .set(updateData)
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .returning();
 
   return updated ?? null;
 }
 
-export async function deleteQueue(id: string, appId: string): Promise<boolean> {
+export async function deleteQueue(id: string, appId?: string): Promise<boolean> {
   const db = getDatabase();
+
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
 
   const result = await db
     .delete(queues)
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .returning({ id: queues.id });
 
   return result.length > 0;
 }
 
-export async function pauseQueue(id: string, appId: string): Promise<boolean> {
+export async function pauseQueue(id: string, appId?: string): Promise<boolean> {
   const db = getDatabase();
+
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
 
   const result = await db
     .update(queues)
     .set({ isPaused: true, updatedAt: new Date() })
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .returning({ id: queues.id });
 
   return result.length > 0;
 }
 
-export async function resumeQueue(id: string, appId: string): Promise<boolean> {
+export async function resumeQueue(id: string, appId?: string): Promise<boolean> {
   const db = getDatabase();
+
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
 
   const result = await db
     .update(queues)
     .set({ isPaused: false, updatedAt: new Date() })
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .returning({ id: queues.id });
 
   return result.length > 0;
@@ -174,13 +229,18 @@ export interface QueueStats {
   isPaused: boolean;
 }
 
-export async function getQueueStats(id: string, appId: string): Promise<QueueStats | null> {
+export async function getQueueStats(id: string, appId?: string): Promise<QueueStats | null> {
   const db = getDatabase();
+
+  const conditions = [eq(queues.id, id)];
+  if (appId) {
+    conditions.push(eq(queues.appId, appId));
+  }
 
   const [queue] = await db
     .select()
     .from(queues)
-    .where(and(eq(queues.id, id), eq(queues.appId, appId)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!queue) {

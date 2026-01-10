@@ -19,7 +19,7 @@
     "db:generate": "pnpm --filter @mail-queue/db generate",
     "db:studio": "pnpm --filter @mail-queue/db studio",
     "db:seed": "pnpm --filter @mail-queue/db seed",
-    "github:local:check-ci": "pnpm run lint & pnpm run format:check & pnpm run test"
+    "github:local:check-ci": "pnpm run lint & pnpm run format:check & pnpm run typecheck & pnpm run test"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
