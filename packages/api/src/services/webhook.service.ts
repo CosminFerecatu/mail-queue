@@ -99,7 +99,15 @@ export async function createWebhookDelivery(
         metadata: email.metadata as Record<string, unknown> | null,
         event: eventData
           ? {
-              type: eventType.replace('email.', '') as 'queued' | 'sent' | 'delivered' | 'bounced' | 'complained' | 'opened' | 'clicked' | 'unsubscribed',
+              type: eventType.replace('email.', '') as
+                | 'queued'
+                | 'sent'
+                | 'delivered'
+                | 'bounced'
+                | 'complained'
+                | 'opened'
+                | 'clicked'
+                | 'unsubscribed',
               timestamp: new Date().toISOString(),
               data: eventData,
             }
@@ -357,12 +365,7 @@ export async function processPendingRetries(): Promise<number> {
     })
     .from(webhookDeliveries)
     .innerJoin(apps, eq(webhookDeliveries.appId, apps.id))
-    .where(
-      and(
-        eq(webhookDeliveries.status, 'pending'),
-        lte(webhookDeliveries.nextRetryAt, now)
-      )
-    )
+    .where(and(eq(webhookDeliveries.status, 'pending'), lte(webhookDeliveries.nextRetryAt, now)))
     .limit(100);
 
   let queuedCount = 0;

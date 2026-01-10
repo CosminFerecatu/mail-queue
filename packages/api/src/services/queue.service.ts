@@ -79,10 +79,7 @@ export async function getQueuesByAppId(
       .orderBy(desc(queues.priority), queues.name)
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(queues)
-      .where(eq(queues.appId, appId)),
+    db.select({ count: sql<number>`count(*)::int` }).from(queues).where(eq(queues.appId, appId)),
   ]);
 
   return {

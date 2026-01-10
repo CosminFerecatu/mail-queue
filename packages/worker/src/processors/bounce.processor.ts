@@ -32,7 +32,8 @@ export interface ProcessComplaintJobData {
  * - Adds hard bounces to suppression list
  */
 export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<void> {
-  const { emailId, appId, bounceType, bounceSubType, bounceMessage, bouncedRecipients, timestamp } = job.data;
+  const { emailId, appId, bounceType, bounceSubType, bounceMessage, bouncedRecipients, timestamp } =
+    job.data;
   const jobLogger = bounceLogger.child({ jobId: job.id, emailId, appId, bounceType });
 
   jobLogger.info('Processing bounce notification');
@@ -53,10 +54,7 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
   }
 
   // Update email status to bounced
-  await db
-    .update(emails)
-    .set({ status: 'bounced' })
-    .where(eq(emails.id, emailId));
+  await db.update(emails).set({ status: 'bounced' }).where(eq(emails.id, emailId));
 
   // Record bounce event
   await db.insert(emailEvents).values({
@@ -81,10 +79,7 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
         .select({ id: suppressionList.id })
         .from(suppressionList)
         .where(
-          and(
-            eq(suppressionList.appId, appId),
-            eq(suppressionList.emailAddress, normalizedEmail)
-          )
+          and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
         )
         .limit(1);
 
@@ -113,10 +108,7 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
         .select({ id: suppressionList.id })
         .from(suppressionList)
         .where(
-          and(
-            eq(suppressionList.appId, appId),
-            eq(suppressionList.emailAddress, normalizedEmail)
-          )
+          and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
         )
         .limit(1);
 
@@ -196,10 +188,7 @@ export async function processComplaintJob(job: Job<ProcessComplaintJobData>): Pr
       .select({ id: suppressionList.id })
       .from(suppressionList)
       .where(
-        and(
-          eq(suppressionList.appId, appId),
-          eq(suppressionList.emailAddress, normalizedEmail)
-        )
+        and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
       )
       .limit(1);
 
@@ -211,10 +200,7 @@ export async function processComplaintJob(job: Job<ProcessComplaintJobData>): Pr
         sourceEmailId: emailId,
       });
 
-      jobLogger.info(
-        { recipient: normalizedEmail },
-        'Added complained email to suppression list'
-      );
+      jobLogger.info({ recipient: normalizedEmail }, 'Added complained email to suppression list');
     } else {
       // Update existing suppression to complaint (more severe)
       await db

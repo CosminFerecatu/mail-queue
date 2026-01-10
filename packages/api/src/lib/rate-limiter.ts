@@ -36,10 +36,7 @@ export class HierarchicalRateLimiter {
   /**
    * Check and consume rate limit for an API key
    */
-  async checkApiKeyLimit(
-    apiKeyId: string,
-    customLimit?: number | null
-  ): Promise<RateLimitResult> {
+  async checkApiKeyLimit(apiKeyId: string, customLimit?: number | null): Promise<RateLimitResult> {
     const limit = customLimit ?? this.globalLimit;
     const key = `${RATE_LIMIT_PREFIX}apikey:${apiKeyId}`;
     const windowMs = 60000; // 1 minute window
@@ -50,10 +47,7 @@ export class HierarchicalRateLimiter {
   /**
    * Check and consume rate limit for an app
    */
-  async checkAppLimit(
-    appId: string,
-    dailyLimit?: number | null
-  ): Promise<RateLimitResult> {
+  async checkAppLimit(appId: string, dailyLimit?: number | null): Promise<RateLimitResult> {
     if (!dailyLimit) {
       return { allowed: true, limit: 0, remaining: 0, resetAt: 0 };
     }
@@ -67,10 +61,7 @@ export class HierarchicalRateLimiter {
   /**
    * Check and consume rate limit for a queue (emails per minute)
    */
-  async checkQueueLimit(
-    queueId: string,
-    rateLimit?: number | null
-  ): Promise<RateLimitResult> {
+  async checkQueueLimit(queueId: string, rateLimit?: number | null): Promise<RateLimitResult> {
     if (!rateLimit) {
       return { allowed: true, limit: 0, remaining: 0, resetAt: 0 };
     }

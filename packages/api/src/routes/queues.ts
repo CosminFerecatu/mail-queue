@@ -24,169 +24,227 @@ const ListQuerySchema = z.object({
 
 export async function queueRoutes(app: FastifyInstance): Promise<void> {
   // Create queue
-  app.post(
-    '/queues',
-    { preHandler: requireScope('queue:manage') },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
+  app.post('/queues', { preHandler: requireScope('queue:manage') }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
 
-      const result = CreateQueueSchema.safeParse(request.body);
+    const result = CreateQueueSchema.safeParse(request.body);
 
-      if (!result.success) {
+    if (!result.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: result.error.issues,
+        },
+      });
+    }
+
+    try {
+      const queue = await createQueue(request.appId, result.data);
+
+      return reply.status(201).send({
+        success: true,
+        data: {
+          id: queue.id,
+          name: queue.name,
+          priority: queue.priority,
+          rateLimit: queue.rateLimit,
+          maxRetries: queue.maxRetries,
+          retryDelay: queue.retryDelay,
+          smtpConfigId: queue.smtpConfigId,
+          isPaused: queue.isPaused,
+          settings: queue.settings,
+          createdAt: queue.createdAt,
+          updatedAt: queue.updatedAt,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('SMTP configuration')) {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid request body',
-            details: result.error.issues,
+            code: 'INVALID_SMTP_CONFIG',
+            message: error.message,
           },
         });
       }
 
-      try {
-        const queue = await createQueue(request.appId, result.data);
-
-        return reply.status(201).send({
-          success: true,
-          data: {
-            id: queue.id,
-            name: queue.name,
-            priority: queue.priority,
-            rateLimit: queue.rateLimit,
-            maxRetries: queue.maxRetries,
-            retryDelay: queue.retryDelay,
-            smtpConfigId: queue.smtpConfigId,
-            isPaused: queue.isPaused,
-            settings: queue.settings,
-            createdAt: queue.createdAt,
-            updatedAt: queue.updatedAt,
+      // Handle unique constraint violation
+      if (
+        error instanceof Error &&
+        error.message.includes('unique constraint') &&
+        error.message.includes('queues_app_id_name')
+      ) {
+        return reply.status(409).send({
+          success: false,
+          error: {
+            code: 'DUPLICATE_QUEUE',
+            message: 'A queue with this name already exists for this app',
           },
         });
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('SMTP configuration')) {
-          return reply.status(400).send({
-            success: false,
-            error: {
-              code: 'INVALID_SMTP_CONFIG',
-              message: error.message,
-            },
-          });
-        }
-
-        // Handle unique constraint violation
-        if (
-          error instanceof Error &&
-          error.message.includes('unique constraint') &&
-          error.message.includes('queues_app_id_name')
-        ) {
-          return reply.status(409).send({
-            success: false,
-            error: {
-              code: 'DUPLICATE_QUEUE',
-              message: 'A queue with this name already exists for this app',
-            },
-          });
-        }
-
-        throw error;
       }
+
+      throw error;
     }
-  );
+  });
 
   // List queues
-  app.get(
-    '/queues',
-    { preHandler: requireAuth },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
-
-      const queryResult = ListQuerySchema.safeParse(request.query);
-
-      if (!queryResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryResult.error.issues,
-          },
-        });
-      }
-
-      const { limit, offset } = queryResult.data;
-
-      const { queues, total } = await getQueuesByAppId(request.appId, { limit, offset });
-
-      return {
-        success: true,
-        data: queues.map((q) => ({
-          id: q.id,
-          name: q.name,
-          priority: q.priority,
-          rateLimit: q.rateLimit,
-          maxRetries: q.maxRetries,
-          retryDelay: q.retryDelay,
-          smtpConfigId: q.smtpConfigId,
-          isPaused: q.isPaused,
-          settings: q.settings,
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt,
-        })),
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + queues.length < total,
+  app.get('/queues', { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
         },
-      };
+      });
     }
-  );
+
+    const queryResult = ListQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid query parameters',
+          details: queryResult.error.issues,
+        },
+      });
+    }
+
+    const { limit, offset } = queryResult.data;
+
+    const { queues, total } = await getQueuesByAppId(request.appId, { limit, offset });
+
+    return {
+      success: true,
+      data: queues.map((q) => ({
+        id: q.id,
+        name: q.name,
+        priority: q.priority,
+        rateLimit: q.rateLimit,
+        maxRetries: q.maxRetries,
+        retryDelay: q.retryDelay,
+        smtpConfigId: q.smtpConfigId,
+        isPaused: q.isPaused,
+        settings: q.settings,
+        createdAt: q.createdAt,
+        updatedAt: q.updatedAt,
+      })),
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + queues.length < total,
+      },
+    };
+  });
 
   // Get queue by ID
-  app.get(
-    '/queues/:id',
-    { preHandler: requireAuth },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
+  app.get('/queues/:id', { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
 
-      const paramsResult = ParamsSchema.safeParse(request.params);
+    const paramsResult = ParamsSchema.safeParse(request.params);
 
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid queue ID',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid queue ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
 
-      const queue = await getQueueById(paramsResult.data.id, request.appId);
+    const queue = await getQueueById(paramsResult.data.id, request.appId);
+
+    if (!queue) {
+      return reply.status(404).send({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Queue not found',
+        },
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        id: queue.id,
+        name: queue.name,
+        priority: queue.priority,
+        rateLimit: queue.rateLimit,
+        maxRetries: queue.maxRetries,
+        retryDelay: queue.retryDelay,
+        smtpConfigId: queue.smtpConfigId,
+        isPaused: queue.isPaused,
+        settings: queue.settings,
+        createdAt: queue.createdAt,
+        updatedAt: queue.updatedAt,
+      },
+    };
+  });
+
+  // Update queue
+  app.patch('/queues/:id', { preHandler: requireScope('queue:manage') }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
+
+    const paramsResult = ParamsSchema.safeParse(request.params);
+
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid queue ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
+
+    const bodyResult = UpdateQueueSchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: bodyResult.error.issues,
+        },
+      });
+    }
+
+    try {
+      const queue = await updateQueue(paramsResult.data.id, request.appId, bodyResult.data);
 
       if (!queue) {
         return reply.status(404).send({
@@ -214,93 +272,19 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: queue.updatedAt,
         },
       };
-    }
-  );
-
-  // Update queue
-  app.patch(
-    '/queues/:id',
-    { preHandler: requireScope('queue:manage') },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
-
-      const paramsResult = ParamsSchema.safeParse(request.params);
-
-      if (!paramsResult.success) {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('SMTP configuration')) {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid queue ID',
-            details: paramsResult.error.issues,
+            code: 'INVALID_SMTP_CONFIG',
+            message: error.message,
           },
         });
       }
-
-      const bodyResult = UpdateQueueSchema.safeParse(request.body);
-
-      if (!bodyResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid request body',
-            details: bodyResult.error.issues,
-          },
-        });
-      }
-
-      try {
-        const queue = await updateQueue(paramsResult.data.id, request.appId, bodyResult.data);
-
-        if (!queue) {
-          return reply.status(404).send({
-            success: false,
-            error: {
-              code: 'NOT_FOUND',
-              message: 'Queue not found',
-            },
-          });
-        }
-
-        return {
-          success: true,
-          data: {
-            id: queue.id,
-            name: queue.name,
-            priority: queue.priority,
-            rateLimit: queue.rateLimit,
-            maxRetries: queue.maxRetries,
-            retryDelay: queue.retryDelay,
-            smtpConfigId: queue.smtpConfigId,
-            isPaused: queue.isPaused,
-            settings: queue.settings,
-            createdAt: queue.createdAt,
-            updatedAt: queue.updatedAt,
-          },
-        };
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('SMTP configuration')) {
-          return reply.status(400).send({
-            success: false,
-            error: {
-              code: 'INVALID_SMTP_CONFIG',
-              message: error.message,
-            },
-          });
-        }
-        throw error;
-      }
+      throw error;
     }
-  );
+  });
 
   // Delete queue
   app.delete(
@@ -441,49 +425,45 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // Get queue stats
-  app.get(
-    '/queues/:id/stats',
-    { preHandler: requireAuth },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
-
-      const paramsResult = ParamsSchema.safeParse(request.params);
-
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid queue ID',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
-
-      const stats = await getQueueStats(paramsResult.data.id, request.appId);
-
-      if (!stats) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Queue not found',
-          },
-        });
-      }
-
-      return {
-        success: true,
-        data: stats,
-      };
+  app.get('/queues/:id/stats', { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
     }
-  );
+
+    const paramsResult = ParamsSchema.safeParse(request.params);
+
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid queue ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
+
+    const stats = await getQueueStats(paramsResult.data.id, request.appId);
+
+    if (!stats) {
+      return reply.status(404).send({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Queue not found',
+        },
+      });
+    }
+
+    return {
+      success: true,
+      data: stats,
+    };
+  });
 }

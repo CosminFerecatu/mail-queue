@@ -1,10 +1,6 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
-import {
-  startHttpTimer,
-  recordHttpRequest,
-  recordApiKeyUsage,
-} from '../lib/metrics.js';
+import { startHttpTimer, recordHttpRequest, recordApiKeyUsage } from '../lib/metrics.js';
 
 type MetricsTimer = (labels: { method: string; route: string; status_code: string }) => void;
 

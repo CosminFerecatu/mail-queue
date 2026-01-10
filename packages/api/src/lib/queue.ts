@@ -52,10 +52,7 @@ export async function addEmailJob(data: SendEmailJobData): Promise<string> {
   return job.id ?? data.emailId;
 }
 
-export async function addDelayedEmailJob(
-  data: SendEmailJobData,
-  delayMs: number
-): Promise<string> {
+export async function addDelayedEmailJob(data: SendEmailJobData, delayMs: number): Promise<string> {
   const queue = getQueue(QUEUE_NAMES.EMAIL);
 
   const job = await queue.add('send-email', data, {

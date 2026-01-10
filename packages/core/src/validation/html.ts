@@ -157,7 +157,9 @@ export function validateHtml(
 
   // Check image-to-text ratio
   if (imageCount > 0 && textContent.trim().length < 100) {
-    warnings.push('Email appears to be mostly images with little text, which may affect deliverability');
+    warnings.push(
+      'Email appears to be mostly images with little text, which may affect deliverability'
+    );
   }
 
   // Check for external images
@@ -223,7 +225,7 @@ export function estimateSpamScore(html: string, plainText: string | null): numbe
   // Check for too many links
   const linkCount = countMatches(html, /<a\b[^>]*href/gi);
   if (linkCount > 20) {
-    score += Math.min((linkCount - 20), 15);
+    score += Math.min(linkCount - 20, 15);
   }
 
   // Check for dangerous patterns

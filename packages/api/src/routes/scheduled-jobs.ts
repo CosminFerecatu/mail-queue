@@ -11,18 +11,20 @@ import {
   validateCronExpression,
 } from '../services/scheduled-jobs.service.js';
 
-const EmailTemplateSchema = z.object({
-  from: z.object({
-    email: z.string().email(),
-    name: z.string().max(100).optional(),
-  }),
-  subject: z.string().min(1).max(998),
-  html: z.string().max(5_000_000).optional(),
-  text: z.string().max(1_000_000).optional(),
-  headers: z.record(z.string()).optional(),
-}).refine((data) => data.html || data.text, {
-  message: 'Either html or text body is required',
-});
+const EmailTemplateSchema = z
+  .object({
+    from: z.object({
+      email: z.string().email(),
+      name: z.string().max(100).optional(),
+    }),
+    subject: z.string().min(1).max(998),
+    html: z.string().max(5_000_000).optional(),
+    text: z.string().max(1_000_000).optional(),
+    headers: z.record(z.string()).optional(),
+  })
+  .refine((data) => data.html || data.text, {
+    message: 'Either html or text body is required',
+  });
 
 const CreateScheduledJobSchema = z.object({
   queueName: z.string().min(1).max(100),
@@ -179,7 +181,9 @@ export const scheduledJobsRoutes: FastifyPluginAsync = async (app: FastifyInstan
       }
 
       // Additional validation for cron expression
-      if (!validateCronExpression(bodyResult.data.cronExpression, bodyResult.data.timezone ?? 'UTC')) {
+      if (
+        !validateCronExpression(bodyResult.data.cronExpression, bodyResult.data.timezone ?? 'UTC')
+      ) {
         return reply.status(400).send({
           success: false,
           error: {
@@ -251,11 +255,7 @@ export const scheduledJobsRoutes: FastifyPluginAsync = async (app: FastifyInstan
       }
 
       try {
-        const job = await updateScheduledJob(
-          paramsResult.data.id,
-          request.appId,
-          bodyResult.data
-        );
+        const job = await updateScheduledJob(paramsResult.data.id, request.appId, bodyResult.data);
 
         if (!job) {
           return reply.status(404).send({

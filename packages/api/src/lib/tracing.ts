@@ -2,10 +2,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 
 // Enable debug logging for OpenTelemetry (only in development)
@@ -63,11 +60,7 @@ export function initTracing(): void {
           ignoreIncomingRequestHook: (request) => {
             // Ignore health check and metrics endpoints
             const url = request.url ?? '';
-            return (
-              url.includes('/health') ||
-              url.includes('/metrics') ||
-              url.includes('/favicon')
-            );
+            return url.includes('/health') || url.includes('/metrics') || url.includes('/favicon');
           },
         },
         // Configure Fastify instrumentation

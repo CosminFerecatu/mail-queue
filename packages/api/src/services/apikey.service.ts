@@ -1,11 +1,7 @@
 import bcrypt from 'bcrypt';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDatabase, apiKeys, apps, type ApiKeyRow } from '@mail-queue/db';
-import {
-  type CreateApiKeyInput,
-  type ApiKeyScope,
-  generateApiKey,
-} from '@mail-queue/core';
+import { type CreateApiKeyInput, type ApiKeyScope, generateApiKey } from '@mail-queue/core';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -124,11 +120,7 @@ export async function validateApiKey(plainKey: string): Promise<ApiKeyWithApp | 
     .from(apiKeys)
     .innerJoin(apps, eq(apiKeys.appId, apps.id))
     .where(
-      and(
-        eq(apiKeys.keyPrefix, prefixPattern),
-        eq(apiKeys.isActive, true),
-        eq(apps.isActive, true)
-      )
+      and(eq(apiKeys.keyPrefix, prefixPattern), eq(apiKeys.isActive, true), eq(apps.isActive, true))
     )
     .limit(10); // Limit candidates for safety
 

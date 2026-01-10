@@ -8,8 +8,6 @@ export const metricsRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
   app.get('/metrics', async (_request, reply) => {
     const metrics = await getMetrics();
 
-    reply
-      .header('Content-Type', getMetricsContentType())
-      .send(metrics);
+    reply.header('Content-Type', getMetricsContentType()).send(metrics);
   });
 };

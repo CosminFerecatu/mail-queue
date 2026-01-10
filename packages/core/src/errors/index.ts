@@ -106,7 +106,10 @@ export class QueueNotFoundError extends NotFoundError {
   override readonly code = 'QUEUE_NOT_FOUND';
 
   constructor(queueName?: string) {
-    super(`Queue not found${queueName ? `: ${queueName}` : ''}`, queueName ? { queueName } : undefined);
+    super(
+      `Queue not found${queueName ? `: ${queueName}` : ''}`,
+      queueName ? { queueName } : undefined
+    );
   }
 }
 
@@ -122,7 +125,10 @@ export class SmtpConfigNotFoundError extends NotFoundError {
   override readonly code = 'SMTP_CONFIG_NOT_FOUND';
 
   constructor(configId?: string) {
-    super(`SMTP config not found${configId ? `: ${configId}` : ''}`, configId ? { configId } : undefined);
+    super(
+      `SMTP config not found${configId ? `: ${configId}` : ''}`,
+      configId ? { configId } : undefined
+    );
   }
 }
 

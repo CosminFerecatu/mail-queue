@@ -39,10 +39,7 @@ export async function processAggregateStatsJob(job: Job<AggregateStatsJobData>):
     await aggregateForApp(appId, from, to, period, jobLogger);
   } else {
     // Get all active apps
-    const activeApps = await db
-      .select({ id: apps.id })
-      .from(apps)
-      .where(eq(apps.isActive, true));
+    const activeApps = await db.select({ id: apps.id }).from(apps).where(eq(apps.isActive, true));
 
     for (const app of activeApps) {
       await aggregateForApp(app.id, from, to, period, jobLogger);
@@ -68,13 +65,7 @@ async function aggregateForApp(
       count: count(),
     })
     .from(emails)
-    .where(
-      and(
-        eq(emails.appId, appId),
-        gte(emails.createdAt, from),
-        lte(emails.createdAt, to)
-      )
-    )
+    .where(and(eq(emails.appId, appId), gte(emails.createdAt, from), lte(emails.createdAt, to)))
     .groupBy(emails.status);
 
   // Get event counts
@@ -86,11 +77,7 @@ async function aggregateForApp(
     .from(emailEvents)
     .innerJoin(emails, eq(emailEvents.emailId, emails.id))
     .where(
-      and(
-        eq(emails.appId, appId),
-        gte(emailEvents.createdAt, from),
-        lte(emailEvents.createdAt, to)
-      )
+      and(eq(emails.appId, appId), gte(emailEvents.createdAt, from), lte(emailEvents.createdAt, to))
     )
     .groupBy(emailEvents.eventType);
 
@@ -145,11 +132,7 @@ export async function processReputationUpdateJob(job: Job<UpdateReputationJobDat
     .select({ count: count() })
     .from(emails)
     .where(
-      and(
-        eq(emails.appId, appId),
-        eq(emails.status, 'bounced'),
-        gte(emails.createdAt, yesterday)
-      )
+      and(eq(emails.appId, appId), eq(emails.status, 'bounced'), gte(emails.createdAt, yesterday))
     );
 
   const bounceCount = bounceResult?.count ?? 0;
@@ -176,8 +159,8 @@ export async function processReputationUpdateJob(job: Job<UpdateReputationJobDat
   // Calculate reputation score
   // Base score of 100, subtract based on bounce and complaint rates
   let score = 100;
-  score -= bounceRate * 2;      // Each 1% bounce = -2 points
-  score -= complaintRate * 20;  // Each 1% complaint = -20 points
+  score -= bounceRate * 2; // Each 1% bounce = -2 points
+  score -= complaintRate * 20; // Each 1% complaint = -20 points
   score = Math.max(0, Math.min(100, score));
 
   // Determine throttling
@@ -236,10 +219,7 @@ export async function processAllAppsReputationUpdate(): Promise<number> {
   const db = getDatabase();
 
   // Get all active apps
-  const activeApps = await db
-    .select({ id: apps.id })
-    .from(apps)
-    .where(eq(apps.isActive, true));
+  const activeApps = await db.select({ id: apps.id }).from(apps).where(eq(apps.isActive, true));
 
   let updatedCount = 0;
 
@@ -255,7 +235,10 @@ export async function processAllAppsReputationUpdate(): Promise<number> {
     }
   }
 
-  logger.info({ updatedCount, totalApps: activeApps.length }, 'All apps reputation update completed');
+  logger.info(
+    { updatedCount, totalApps: activeApps.length },
+    'All apps reputation update completed'
+  );
 
   return updatedCount;
 }

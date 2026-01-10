@@ -1,10 +1,4 @@
-import {
-  Registry,
-  Counter,
-  Histogram,
-  Gauge,
-  collectDefaultMetrics,
-} from 'prom-client';
+import { Registry, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 import { QUEUE_NAMES } from '@mail-queue/core';
 import { getQueueStats } from './queue.js';
 import { logger } from './logger.js';
@@ -222,7 +216,11 @@ export function recordApiKeyUsage(appId: string, keyPrefix: string): void {
 /**
  * Create a timer for HTTP request duration
  */
-export function startHttpTimer(): (labels: { method: string; route: string; status_code: string }) => void {
+export function startHttpTimer(): (labels: {
+  method: string;
+  route: string;
+  status_code: string;
+}) => void {
   return httpRequestDuration.startTimer();
 }
 

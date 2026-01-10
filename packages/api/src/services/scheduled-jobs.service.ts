@@ -89,9 +89,7 @@ export async function createScheduledJob(
 
   // Validate cron expression
   if (!validateCronExpression(input.cronExpression, input.timezone ?? 'UTC')) {
-    throw new ValidationError([
-      { path: 'cronExpression', message: 'Invalid cron expression' },
-    ]);
+    throw new ValidationError([{ path: 'cronExpression', message: 'Invalid cron expression' }]);
   }
 
   // Find the queue
@@ -230,10 +228,7 @@ export async function listScheduledJobs(
       .orderBy(desc(scheduledJobs.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(scheduledJobs)
-      .where(whereClause),
+    db.select({ count: sql<number>`count(*)::int` }).from(scheduledJobs).where(whereClause),
   ]);
 
   return {
@@ -266,9 +261,7 @@ export async function updateScheduledJob(
   const timezone = input.timezone ?? existing.timezone;
 
   if (input.cronExpression && !validateCronExpression(input.cronExpression, timezone)) {
-    throw new ValidationError([
-      { path: 'cronExpression', message: 'Invalid cron expression' },
-    ]);
+    throw new ValidationError([{ path: 'cronExpression', message: 'Invalid cron expression' }]);
   }
 
   // Calculate new next run time if cron or timezone changed
@@ -341,12 +334,7 @@ export async function getDueScheduledJobs(): Promise<ScheduledJob[]> {
     })
     .from(scheduledJobs)
     .innerJoin(queues, eq(scheduledJobs.queueId, queues.id))
-    .where(
-      and(
-        eq(scheduledJobs.isActive, true),
-        lte(scheduledJobs.nextRunAt, now)
-      )
-    );
+    .where(and(eq(scheduledJobs.isActive, true), lte(scheduledJobs.nextRunAt, now)));
 
   return jobs.map((job) => ({
     ...job,
@@ -362,11 +350,7 @@ export async function markScheduledJobRun(jobId: string): Promise<void> {
   const now = new Date();
 
   // Get the job to calculate next run time
-  const [job] = await db
-    .select()
-    .from(scheduledJobs)
-    .where(eq(scheduledJobs.id, jobId))
-    .limit(1);
+  const [job] = await db.select().from(scheduledJobs).where(eq(scheduledJobs.id, jobId)).limit(1);
 
   if (!job) {
     return;

@@ -35,135 +35,127 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
   // These are nested under /apps/:appId/api-keys
 
   // Create API key (admin only)
-  app.post(
-    '/apps/:appId/api-keys',
-    { preHandler: requireAdminAuth },
-    async (request, reply) => {
-      const paramsResult = AppParamsSchema.safeParse(request.params);
+  app.post('/apps/:appId/api-keys', { preHandler: requireAdminAuth }, async (request, reply) => {
+    const paramsResult = AppParamsSchema.safeParse(request.params);
 
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid app ID',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
-
-      const bodyResult = CreateApiKeySchema.safeParse(request.body);
-
-      if (!bodyResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid request body',
-            details: bodyResult.error.issues,
-          },
-        });
-      }
-
-      // Check if app exists
-      const appData = await getAppById(paramsResult.data.appId);
-      if (!appData) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'App not found',
-          },
-        });
-      }
-
-      const { apiKey, plainKey } = await createApiKey(
-        paramsResult.data.appId,
-        bodyResult.data,
-        appData.sandboxMode
-      );
-
-      return reply.status(201).send({
-        success: true,
-        data: {
-          id: apiKey.id,
-          name: apiKey.name,
-          key: plainKey, // Only returned once at creation!
-          keyPrefix: apiKey.keyPrefix,
-          scopes: apiKey.scopes,
-          rateLimit: apiKey.rateLimit,
-          ipAllowlist: apiKey.ipAllowlist,
-          expiresAt: apiKey.expiresAt,
-          isActive: apiKey.isActive,
-          createdAt: apiKey.createdAt,
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid app ID',
+          details: paramsResult.error.issues,
         },
-        warning: 'Store this API key securely. It will not be shown again.',
       });
     }
-  );
+
+    const bodyResult = CreateApiKeySchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: bodyResult.error.issues,
+        },
+      });
+    }
+
+    // Check if app exists
+    const appData = await getAppById(paramsResult.data.appId);
+    if (!appData) {
+      return reply.status(404).send({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'App not found',
+        },
+      });
+    }
+
+    const { apiKey, plainKey } = await createApiKey(
+      paramsResult.data.appId,
+      bodyResult.data,
+      appData.sandboxMode
+    );
+
+    return reply.status(201).send({
+      success: true,
+      data: {
+        id: apiKey.id,
+        name: apiKey.name,
+        key: plainKey, // Only returned once at creation!
+        keyPrefix: apiKey.keyPrefix,
+        scopes: apiKey.scopes,
+        rateLimit: apiKey.rateLimit,
+        ipAllowlist: apiKey.ipAllowlist,
+        expiresAt: apiKey.expiresAt,
+        isActive: apiKey.isActive,
+        createdAt: apiKey.createdAt,
+      },
+      warning: 'Store this API key securely. It will not be shown again.',
+    });
+  });
 
   // List API keys for an app (admin only)
-  app.get(
-    '/apps/:appId/api-keys',
-    { preHandler: requireAdminAuth },
-    async (request, reply) => {
-      const paramsResult = AppParamsSchema.safeParse(request.params);
+  app.get('/apps/:appId/api-keys', { preHandler: requireAdminAuth }, async (request, reply) => {
+    const paramsResult = AppParamsSchema.safeParse(request.params);
 
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid app ID',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid app ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
 
-      const queryResult = ListQuerySchema.safeParse(request.query);
+    const queryResult = ListQuerySchema.safeParse(request.query);
 
-      if (!queryResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryResult.error.issues,
-          },
-        });
-      }
+    if (!queryResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid query parameters',
+          details: queryResult.error.issues,
+        },
+      });
+    }
 
-      const { limit, offset, isActive } = queryResult.data;
+    const { limit, offset, isActive } = queryResult.data;
 
-      const { keys, total } = await getApiKeysByAppId(paramsResult.data.appId, {
+    const { keys, total } = await getApiKeysByAppId(paramsResult.data.appId, {
+      limit,
+      offset,
+      isActive,
+    });
+
+    return {
+      success: true,
+      data: keys.map((k) => ({
+        id: k.id,
+        name: k.name,
+        keyPrefix: k.keyPrefix,
+        scopes: k.scopes,
+        rateLimit: k.rateLimit,
+        ipAllowlist: k.ipAllowlist,
+        expiresAt: k.expiresAt,
+        isActive: k.isActive,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
+      })),
+      pagination: {
+        total,
         limit,
         offset,
-        isActive,
-      });
-
-      return {
-        success: true,
-        data: keys.map((k) => ({
-          id: k.id,
-          name: k.name,
-          keyPrefix: k.keyPrefix,
-          scopes: k.scopes,
-          rateLimit: k.rateLimit,
-          ipAllowlist: k.ipAllowlist,
-          expiresAt: k.expiresAt,
-          isActive: k.isActive,
-          createdAt: k.createdAt,
-          lastUsedAt: k.lastUsedAt,
-        })),
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + keys.length < total,
-        },
-      };
-    }
-  );
+        hasMore: offset + keys.length < total,
+      },
+    };
+  });
 
   // Get API key by ID (admin only)
   app.get(
@@ -337,62 +329,58 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
   // These routes use the authenticated app's ID
 
   // List own API keys
-  app.get(
-    '/api-keys',
-    { preHandler: requireAuth },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
+  app.get('/api-keys', { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
 
-      const queryResult = ListQuerySchema.safeParse(request.query);
+    const queryResult = ListQuerySchema.safeParse(request.query);
 
-      if (!queryResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryResult.error.issues,
-          },
-        });
-      }
+    if (!queryResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid query parameters',
+          details: queryResult.error.issues,
+        },
+      });
+    }
 
-      const { limit, offset, isActive } = queryResult.data;
+    const { limit, offset, isActive } = queryResult.data;
 
-      const { keys, total } = await getApiKeysByAppId(request.appId, {
+    const { keys, total } = await getApiKeysByAppId(request.appId, {
+      limit,
+      offset,
+      isActive,
+    });
+
+    return {
+      success: true,
+      data: keys.map((k) => ({
+        id: k.id,
+        name: k.name,
+        keyPrefix: k.keyPrefix,
+        scopes: k.scopes,
+        rateLimit: k.rateLimit,
+        ipAllowlist: k.ipAllowlist,
+        expiresAt: k.expiresAt,
+        isActive: k.isActive,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
+      })),
+      pagination: {
+        total,
         limit,
         offset,
-        isActive,
-      });
-
-      return {
-        success: true,
-        data: keys.map((k) => ({
-          id: k.id,
-          name: k.name,
-          keyPrefix: k.keyPrefix,
-          scopes: k.scopes,
-          rateLimit: k.rateLimit,
-          ipAllowlist: k.ipAllowlist,
-          expiresAt: k.expiresAt,
-          isActive: k.isActive,
-          createdAt: k.createdAt,
-          lastUsedAt: k.lastUsedAt,
-        })),
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + keys.length < total,
-        },
-      };
-    }
-  );
+        hasMore: offset + keys.length < total,
+      },
+    };
+  });
 }

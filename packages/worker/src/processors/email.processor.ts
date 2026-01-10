@@ -1,6 +1,14 @@
 import type { Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { getDatabase, emails, emailEvents, queues, smtpConfigs, apps, appReputation } from '@mail-queue/db';
+import {
+  getDatabase,
+  emails,
+  emailEvents,
+  queues,
+  smtpConfigs,
+  apps,
+  appReputation,
+} from '@mail-queue/db';
 import type { SendEmailJobData } from '@mail-queue/core';
 import { parseEncryptionKey, SmtpError } from '@mail-queue/core';
 import {
@@ -33,11 +41,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
   const db = getDatabase();
 
   // 1. Fetch the email record
-  const [email] = await db
-    .select()
-    .from(emails)
-    .where(eq(emails.id, emailId))
-    .limit(1);
+  const [email] = await db.select().from(emails).where(eq(emails.id, emailId)).limit(1);
 
   if (!email) {
     jobLogger.error('Email not found');
@@ -117,10 +121,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
   }
 
   // 2. Update status to processing
-  await db
-    .update(emails)
-    .set({ status: 'processing' })
-    .where(eq(emails.id, emailId));
+  await db.update(emails).set({ status: 'processing' }).where(eq(emails.id, emailId));
 
   await db.insert(emailEvents).values({
     emailId,
@@ -132,11 +133,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
   let smtpConfig: SmtpClientConfig | null = null;
 
   // Check queue for specific SMTP config
-  const [queue] = await db
-    .select()
-    .from(queues)
-    .where(eq(queues.id, queueId))
-    .limit(1);
+  const [queue] = await db.select().from(queues).where(eq(queues.id, queueId)).limit(1);
 
   // Capture queue name for metrics
   if (queue) {
@@ -230,7 +227,7 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
       // Sandbox mode: simulate sending without actual SMTP
       const recipients = Array.isArray(email.toAddresses)
         ? email.toAddresses.map((r: { email?: string } | string) =>
-            typeof r === 'string' ? r : r.email ?? ''
+            typeof r === 'string' ? r : (r.email ?? '')
           )
         : [];
 
@@ -322,7 +319,10 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
     }
 
     // Record SMTP error
-    recordSmtpError(smtpConfig?.host ?? 'unknown', error instanceof SmtpError ? 'smtp_error' : 'unknown');
+    recordSmtpError(
+      smtpConfig?.host ?? 'unknown',
+      error instanceof SmtpError ? 'smtp_error' : 'unknown'
+    );
 
     // Update email status
     await db

@@ -1,10 +1,4 @@
-import {
-  Registry,
-  Counter,
-  Histogram,
-  Gauge,
-  collectDefaultMetrics,
-} from 'prom-client';
+import { Registry, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 import http from 'node:http';
 import { logger } from './logger.js';
 
@@ -119,7 +113,11 @@ export function recordEmailRetry(appId: string, queueName: string): void {
 /**
  * Record SMTP send duration
  */
-export function recordSmtpSend(host: string, status: 'success' | 'failure', durationSeconds: number): void {
+export function recordSmtpSend(
+  host: string,
+  status: 'success' | 'failure',
+  durationSeconds: number
+): void {
   smtpSendDuration.observe({ host, status }, durationSeconds);
 }
 

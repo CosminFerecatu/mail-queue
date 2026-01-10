@@ -60,9 +60,7 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
   if (input.html) {
     const htmlValidation = validateHtml(input.html, input.text ?? null);
     if (!htmlValidation.isValid) {
-      throw new ValidationError(
-        htmlValidation.errors.map((e) => ({ path: 'html', message: e }))
-      );
+      throw new ValidationError(htmlValidation.errors.map((e) => ({ path: 'html', message: e })));
     }
   }
 
@@ -107,7 +105,7 @@ export async function createEmail(options: CreateEmailOptions): Promise<CreateEm
       .from(suppressionList)
       .where(
         and(
-          eq(suppressionList.emailAddress, recipientEmail.toLowerCase()),
+          eq(suppressionList.emailAddress, recipientEmail.toLowerCase())
           // Check app-specific or global suppression
         )
       )
@@ -294,10 +292,7 @@ export async function cancelScheduledEmail(emailId: string, appId: string): Prom
   }
 
   // Update status to cancelled
-  await db
-    .update(emails)
-    .set({ status: 'cancelled' })
-    .where(eq(emails.id, emailId));
+  await db.update(emails).set({ status: 'cancelled' }).where(eq(emails.id, emailId));
 
   // Record event
   await db.insert(emailEvents).values({
@@ -310,7 +305,14 @@ export async function cancelScheduledEmail(emailId: string, appId: string): Prom
   logger.info({ emailId, appId }, 'Email cancelled');
 }
 
-export type EmailStatus = 'queued' | 'processing' | 'sent' | 'delivered' | 'bounced' | 'failed' | 'cancelled';
+export type EmailStatus =
+  | 'queued'
+  | 'processing'
+  | 'sent'
+  | 'delivered'
+  | 'bounced'
+  | 'failed'
+  | 'cancelled';
 
 interface GetEmailsOptions {
   limit?: number;
@@ -364,10 +366,7 @@ export async function getEmailsByAppId(
       .orderBy(desc(emails.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(emails)
-      .where(whereClause),
+    db.select({ count: sql<number>`count(*)::int` }).from(emails).where(whereClause),
   ]);
 
   return {
@@ -463,7 +462,9 @@ export interface CreateBatchEmailOptions {
   input: CreateBatchEmailInput;
 }
 
-export async function createBatchEmails(options: CreateBatchEmailOptions): Promise<BatchEmailResponse> {
+export async function createBatchEmails(
+  options: CreateBatchEmailOptions
+): Promise<BatchEmailResponse> {
   const { appId, input } = options;
   const db = getDatabase();
   const batchId = randomUUID();
@@ -478,9 +479,7 @@ export async function createBatchEmails(options: CreateBatchEmailOptions): Promi
   if (input.html) {
     const htmlValidation = validateHtml(input.html, input.text ?? null);
     if (!htmlValidation.isValid) {
-      throw new ValidationError(
-        htmlValidation.errors.map((e) => ({ path: 'html', message: e }))
-      );
+      throw new ValidationError(htmlValidation.errors.map((e) => ({ path: 'html', message: e })));
     }
   }
 
@@ -511,9 +510,7 @@ export async function createBatchEmails(options: CreateBatchEmailOptions): Promi
 
     try {
       // Extract recipient email
-      const toEmail = typeof recipient.to === 'string'
-        ? { email: recipient.to }
-        : recipient.to;
+      const toEmail = typeof recipient.to === 'string' ? { email: recipient.to } : recipient.to;
 
       // Validate recipient email
       const toValidation = validateEmail(toEmail.email);

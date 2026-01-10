@@ -33,171 +33,47 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const rateLimiter = getRateLimiter(config.globalRateLimit);
 
   // Create email
-  app.post(
-    '/emails',
-    { preHandler: requireScope('email:send') },
-    async (request, reply) => {
-      if (!request.appId || !request.apiKey) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
-
-      try {
-        // Validate request body
-        const parseResult = CreateEmailSchema.safeParse(request.body);
-        if (!parseResult.success) {
-          return reply.status(400).send({
-            success: false,
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'Invalid request body',
-              details: parseResult.error.issues.map((i) => ({
-                path: i.path.join('.'),
-                message: i.message,
-              })),
-            },
-          });
-        }
-
-        const input = parseResult.data;
-
-        // Get queue to check rate limit
-        let queueRateLimit: number | null = null;
-        let queueId: string | undefined;
-        if (input.queue) {
-          const queue = await getQueueByName(input.queue, request.appId);
-          if (queue) {
-            queueRateLimit = queue.rateLimit;
-            queueId = queue.id;
-
-            // Check if queue is paused
-            if (queue.isPaused) {
-              return reply.status(503).send({
-                success: false,
-                error: {
-                  code: 'QUEUE_PAUSED',
-                  message: `Queue "${input.queue}" is paused`,
-                },
-              });
-            }
-          }
-        }
-
-        // Check hierarchical rate limits
-        const rateLimitCheck = await rateLimiter.checkHierarchicalLimit({
-          apiKeyId: request.apiKey.id,
-          apiKeyLimit: request.apiKey.rateLimit,
-          appId: request.appId,
-          appDailyLimit: request.apiKey.app.dailyLimit,
-          queueId,
-          queueRateLimit,
-        });
-
-        if (!rateLimitCheck.allowed && rateLimitCheck.blockedBy) {
-          // Record rate limit hit metric
-          recordRateLimitHit(request.appId, rateLimitCheck.blockedBy);
-
-          const blockedResult = rateLimitCheck.results[rateLimitCheck.blockedBy];
-          if (!blockedResult) {
-            return reply.status(429).send({
-              success: false,
-              error: {
-                code: 'RATE_LIMIT_EXCEEDED',
-                message: 'Rate limit exceeded',
-                retryAfter: 60,
-              },
-            });
-          }
-          const headers = rateLimiter.getRateLimitHeaders(blockedResult);
-
-          for (const [key, value] of Object.entries(headers)) {
-            reply.header(key, value);
-          }
-
-          return reply.status(429).send({
-            success: false,
-            error: {
-              code: 'RATE_LIMIT_EXCEEDED',
-              message: `Rate limit exceeded for ${rateLimitCheck.blockedBy}`,
-              retryAfter: Math.ceil((blockedResult.resetAt - Date.now()) / 1000),
-            },
-          });
-        }
-
-        // Add rate limit headers from API key limit
-        const headers = rateLimiter.getRateLimitHeaders(rateLimitCheck.results.apiKey);
-        for (const [key, value] of Object.entries(headers)) {
-          reply.header(key, value);
-        }
-
-        // Get idempotency key from header
-        const idempotencyKey = request.headers['idempotency-key'] as string | undefined;
-
-        const result = await createEmail({
-          appId: request.appId,
-          input,
-          idempotencyKey,
-        });
-
-        return reply.status(201).send({
-          success: true,
-          data: result,
-        });
-      } catch (error) {
-        if (isMailQueueError(error)) {
-          return reply.status(error.statusCode).send({
-            success: false,
-            error: error.toJSON(),
-          });
-        }
-        throw error;
-      }
+  app.post('/emails', { preHandler: requireScope('email:send') }, async (request, reply) => {
+    if (!request.appId || !request.apiKey) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
     }
-  );
 
-  // Create batch emails
-  app.post(
-    '/emails/batch',
-    { preHandler: requireScope('email:send') },
-    async (request, reply) => {
-      if (!request.appId || !request.apiKey) {
-        return reply.status(401).send({
+    try {
+      // Validate request body
+      const parseResult = CreateEmailSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
           success: false,
           error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request body',
+            details: parseResult.error.issues.map((i) => ({
+              path: i.path.join('.'),
+              message: i.message,
+            })),
           },
         });
       }
 
-      try {
-        // Validate request body
-        const parseResult = CreateBatchEmailSchema.safeParse(request.body);
-        if (!parseResult.success) {
-          return reply.status(400).send({
-            success: false,
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'Invalid request body',
-              details: parseResult.error.issues.map((i) => ({
-                path: i.path.join('.'),
-                message: i.message,
-              })),
-            },
-          });
-        }
+      const input = parseResult.data;
 
-        const input = parseResult.data;
+      // Get queue to check rate limit
+      let queueRateLimit: number | null = null;
+      let queueId: string | undefined;
+      if (input.queue) {
+        const queue = await getQueueByName(input.queue, request.appId);
+        if (queue) {
+          queueRateLimit = queue.rateLimit;
+          queueId = queue.id;
 
-        // Get queue to check rate limit and paused status
-        if (input.queue) {
-          const queue = await getQueueByName(input.queue, request.appId);
-          if (queue?.isPaused) {
+          // Check if queue is paused
+          if (queue.isPaused) {
             return reply.status(503).send({
               success: false,
               error: {
@@ -207,127 +83,235 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
             });
           }
         }
-
-        const result = await createBatchEmails({
-          appId: request.appId,
-          input,
-        });
-
-        // Return appropriate status based on results
-        const statusCode = result.failedCount === result.totalCount ? 400 : 201;
-
-        return reply.status(statusCode).send({
-          success: result.queuedCount > 0,
-          data: result,
-        });
-      } catch (error) {
-        if (isMailQueueError(error)) {
-          return reply.status(error.statusCode).send({
-            success: false,
-            error: error.toJSON(),
-          });
-        }
-        throw error;
-      }
-    }
-  );
-
-  // List emails
-  app.get(
-    '/emails',
-    { preHandler: requireScope('email:read') },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
       }
 
-      const queryResult = ListQuerySchema.safeParse(request.query);
-
-      if (!queryResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid query parameters',
-            details: queryResult.error.issues,
-          },
-        });
-      }
-
-      const { limit, offset, status, queueId } = queryResult.data;
-
-      const { emails, total } = await getEmailsByAppId(request.appId, {
-        limit,
-        offset,
-        status,
+      // Check hierarchical rate limits
+      const rateLimitCheck = await rateLimiter.checkHierarchicalLimit({
+        apiKeyId: request.apiKey.id,
+        apiKeyLimit: request.apiKey.rateLimit,
+        appId: request.appId,
+        appDailyLimit: request.apiKey.app.dailyLimit,
         queueId,
+        queueRateLimit,
       });
 
-      return {
-        success: true,
-        data: emails,
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + emails.length < total,
-        },
-      };
-    }
-  );
+      if (!rateLimitCheck.allowed && rateLimitCheck.blockedBy) {
+        // Record rate limit hit metric
+        recordRateLimitHit(request.appId, rateLimitCheck.blockedBy);
 
-  // Get email by ID
-  app.get(
-    '/emails/:id',
-    { preHandler: requireScope('email:read') },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
+        const blockedResult = rateLimitCheck.results[rateLimitCheck.blockedBy];
+        if (!blockedResult) {
+          return reply.status(429).send({
+            success: false,
+            error: {
+              code: 'RATE_LIMIT_EXCEEDED',
+              message: 'Rate limit exceeded',
+              retryAfter: 60,
+            },
+          });
+        }
+        const headers = rateLimiter.getRateLimitHeaders(blockedResult);
+
+        for (const [key, value] of Object.entries(headers)) {
+          reply.header(key, value);
+        }
+
+        return reply.status(429).send({
           success: false,
           error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: `Rate limit exceeded for ${rateLimitCheck.blockedBy}`,
+            retryAfter: Math.ceil((blockedResult.resetAt - Date.now()) / 1000),
           },
         });
       }
 
-      const paramsResult = ParamsSchema.safeParse(request.params);
+      // Add rate limit headers from API key limit
+      const headers = rateLimiter.getRateLimitHeaders(rateLimitCheck.results.apiKey);
+      for (const [key, value] of Object.entries(headers)) {
+        reply.header(key, value);
+      }
 
-      if (!paramsResult.success) {
+      // Get idempotency key from header
+      const idempotencyKey = request.headers['idempotency-key'] as string | undefined;
+
+      const result = await createEmail({
+        appId: request.appId,
+        input,
+        idempotencyKey,
+      });
+
+      return reply.status(201).send({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      if (isMailQueueError(error)) {
+        return reply.status(error.statusCode).send({
+          success: false,
+          error: error.toJSON(),
+        });
+      }
+      throw error;
+    }
+  });
+
+  // Create batch emails
+  app.post('/emails/batch', { preHandler: requireScope('email:send') }, async (request, reply) => {
+    if (!request.appId || !request.apiKey) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
+
+    try {
+      // Validate request body
+      const parseResult = CreateBatchEmailSchema.safeParse(request.body);
+      if (!parseResult.success) {
         return reply.status(400).send({
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Invalid email ID',
-            details: paramsResult.error.issues,
+            message: 'Invalid request body',
+            details: parseResult.error.issues.map((i) => ({
+              path: i.path.join('.'),
+              message: i.message,
+            })),
           },
         });
       }
 
-      try {
-        const email = await getEmailById(paramsResult.data.id, request.appId);
+      const input = parseResult.data;
 
-        return reply.send({
-          success: true,
-          data: email,
-        });
-      } catch (error) {
-        if (isMailQueueError(error)) {
-          return reply.status(error.statusCode).send({
+      // Get queue to check rate limit and paused status
+      if (input.queue) {
+        const queue = await getQueueByName(input.queue, request.appId);
+        if (queue?.isPaused) {
+          return reply.status(503).send({
             success: false,
-            error: error.toJSON(),
+            error: {
+              code: 'QUEUE_PAUSED',
+              message: `Queue "${input.queue}" is paused`,
+            },
           });
         }
-        throw error;
       }
+
+      const result = await createBatchEmails({
+        appId: request.appId,
+        input,
+      });
+
+      // Return appropriate status based on results
+      const statusCode = result.failedCount === result.totalCount ? 400 : 201;
+
+      return reply.status(statusCode).send({
+        success: result.queuedCount > 0,
+        data: result,
+      });
+    } catch (error) {
+      if (isMailQueueError(error)) {
+        return reply.status(error.statusCode).send({
+          success: false,
+          error: error.toJSON(),
+        });
+      }
+      throw error;
     }
-  );
+  });
+
+  // List emails
+  app.get('/emails', { preHandler: requireScope('email:read') }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
+
+    const queryResult = ListQuerySchema.safeParse(request.query);
+
+    if (!queryResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid query parameters',
+          details: queryResult.error.issues,
+        },
+      });
+    }
+
+    const { limit, offset, status, queueId } = queryResult.data;
+
+    const { emails, total } = await getEmailsByAppId(request.appId, {
+      limit,
+      offset,
+      status,
+      queueId,
+    });
+
+    return {
+      success: true,
+      data: emails,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + emails.length < total,
+      },
+    };
+  });
+
+  // Get email by ID
+  app.get('/emails/:id', { preHandler: requireScope('email:read') }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
+    }
+
+    const paramsResult = ParamsSchema.safeParse(request.params);
+
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid email ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
+
+    try {
+      const email = await getEmailById(paramsResult.data.id, request.appId);
+
+      return reply.send({
+        success: true,
+        data: email,
+      });
+    } catch (error) {
+      if (isMailQueueError(error)) {
+        return reply.status(error.statusCode).send({
+          success: false,
+          error: error.toJSON(),
+        });
+      }
+      throw error;
+    }
+  });
 
   // Get email events
   app.get(
@@ -377,48 +361,44 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   );
 
   // Cancel scheduled email
-  app.delete(
-    '/emails/:id',
-    { preHandler: requireScope('email:send') },
-    async (request, reply) => {
-      if (!request.appId) {
-        return reply.status(401).send({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'App authentication required',
-          },
-        });
-      }
-
-      const paramsResult = ParamsSchema.safeParse(request.params);
-
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid email ID',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
-
-      try {
-        await cancelScheduledEmail(paramsResult.data.id, request.appId);
-
-        return reply.status(204).send();
-      } catch (error) {
-        if (isMailQueueError(error)) {
-          return reply.status(error.statusCode).send({
-            success: false,
-            error: error.toJSON(),
-          });
-        }
-        throw error;
-      }
+  app.delete('/emails/:id', { preHandler: requireScope('email:send') }, async (request, reply) => {
+    if (!request.appId) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'App authentication required',
+        },
+      });
     }
-  );
+
+    const paramsResult = ParamsSchema.safeParse(request.params);
+
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid email ID',
+          details: paramsResult.error.issues,
+        },
+      });
+    }
+
+    try {
+      await cancelScheduledEmail(paramsResult.data.id, request.appId);
+
+      return reply.status(204).send();
+    } catch (error) {
+      if (isMailQueueError(error)) {
+        return reply.status(error.statusCode).send({
+          success: false,
+          error: error.toJSON(),
+        });
+      }
+      throw error;
+    }
+  });
 
   // Retry failed email
   app.post(

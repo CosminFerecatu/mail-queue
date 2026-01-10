@@ -12,10 +12,10 @@ import { logger } from '../lib/logger.js';
 
 // Retry delays in milliseconds (exponential backoff)
 const RETRY_DELAYS = [
-  60 * 1000,       // 1 minute
-  5 * 60 * 1000,   // 5 minutes
-  30 * 60 * 1000,  // 30 minutes
-  60 * 60 * 1000,  // 1 hour
+  60 * 1000, // 1 minute
+  5 * 60 * 1000, // 5 minutes
+  30 * 60 * 1000, // 30 minutes
+  60 * 60 * 1000, // 1 hour
   4 * 60 * 60 * 1000, // 4 hours
 ];
 
@@ -25,15 +25,9 @@ const WEBHOOK_TIMEOUT_MS = 30000; // 30 seconds
 /**
  * Generate HMAC-SHA256 signature for webhook payload
  */
-function generateSignature(
-  secret: string,
-  timestamp: string,
-  payload: string
-): string {
+function generateSignature(secret: string, timestamp: string, payload: string): string {
   const signaturePayload = `${timestamp}.${payload}`;
-  return createHmac('sha256', secret)
-    .update(signaturePayload)
-    .digest('hex');
+  return createHmac('sha256', secret).update(signaturePayload).digest('hex');
 }
 
 /**
@@ -135,7 +129,8 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
 
     if (shouldRetry) {
       // Calculate next retry time
-      const retryDelay = RETRY_DELAYS[attempt - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1] ?? 60000;
+      const retryDelay =
+        RETRY_DELAYS[attempt - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1] ?? 60000;
       const nextRetryAt = new Date(Date.now() + retryDelay);
 
       await db
@@ -159,21 +154,21 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
       // Throw to trigger BullMQ retry
       throw new Error(`Webhook delivery failed: ${displayError}`);
     }
-      // Max attempts reached - mark as failed
-      await db
-        .update(webhookDeliveries)
-        .set({
-          status: 'failed',
-          attempts: attempt,
-          lastError: displayError,
-          nextRetryAt: null,
-        })
-        .where(eq(webhookDeliveries.id, webhookDeliveryId));
+    // Max attempts reached - mark as failed
+    await db
+      .update(webhookDeliveries)
+      .set({
+        status: 'failed',
+        attempts: attempt,
+        lastError: displayError,
+        nextRetryAt: null,
+      })
+      .where(eq(webhookDeliveries.id, webhookDeliveryId));
 
-      jobLogger.error(
-        { totalAttempts: attempt },
-        'Webhook delivery failed permanently after max attempts'
-      );
+    jobLogger.error(
+      { totalAttempts: attempt },
+      'Webhook delivery failed permanently after max attempts'
+    );
   }
 }
 

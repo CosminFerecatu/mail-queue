@@ -52,12 +52,7 @@ export async function processDueScheduledJobs(): Promise<number> {
     })
     .from(scheduledJobs)
     .innerJoin(queues, eq(scheduledJobs.queueId, queues.id))
-    .where(
-      and(
-        eq(scheduledJobs.isActive, true),
-        lte(scheduledJobs.nextRunAt, now)
-      )
-    );
+    .where(and(eq(scheduledJobs.isActive, true), lte(scheduledJobs.nextRunAt, now)));
 
   schedulerLogger.info({ count: dueJobs.length }, 'Found due scheduled jobs');
 
@@ -68,10 +63,7 @@ export async function processDueScheduledJobs(): Promise<number> {
       await processScheduledJob(job);
       processedCount++;
     } catch (error) {
-      schedulerLogger.error(
-        { jobId: job.id, error },
-        'Failed to process scheduled job'
-      );
+      schedulerLogger.error({ jobId: job.id, error }, 'Failed to process scheduled job');
     }
   }
 

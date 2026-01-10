@@ -80,10 +80,7 @@ export async function getApps(options: {
       .orderBy(desc(apps.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(apps)
-      .where(whereClause),
+    db.select({ count: sql<number>`count(*)::int` }).from(apps).where(whereClause),
   ]);
 
   return {

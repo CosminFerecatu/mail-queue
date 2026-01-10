@@ -1,4 +1,13 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid, integer } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  integer,
+} from 'drizzle-orm/pg-core';
 
 // ===========================================
 // Apps Table

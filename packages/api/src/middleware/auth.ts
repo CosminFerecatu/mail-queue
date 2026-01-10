@@ -1,6 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ApiKeyScope } from '@mail-queue/core';
-import { validateApiKey, hasScope, hasAnyScope, checkIpAllowlist, type ApiKeyWithApp } from '../services/apikey.service.js';
+import {
+  validateApiKey,
+  hasScope,
+  hasAnyScope,
+  checkIpAllowlist,
+  type ApiKeyWithApp,
+} from '../services/apikey.service.js';
 import { config } from '../config.js';
 
 declare module 'fastify' {
@@ -17,10 +23,7 @@ export async function authPlugin(app: FastifyInstance): Promise<void> {
   app.decorateRequest('isAdmin', false);
 }
 
-export async function requireAuth(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
+export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const authHeader = request.headers.authorization;
 
   if (!authHeader) {
@@ -161,10 +164,7 @@ export function requireAnyScope(scopes: ApiKeyScope[]) {
   };
 }
 
-export async function optionalAuth(
-  request: FastifyRequest,
-  _reply: FastifyReply
-): Promise<void> {
+export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const authHeader = request.headers.authorization;
 
   if (!authHeader) {

@@ -7,15 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [
-      "node_modules",
-      "dist",
-      "build",
-      ".turbo",
-      "coverage",
-      "*.gen.ts",
-      "drizzle"
-    ]
+    "ignore": ["node_modules", "dist", "build", ".turbo", "coverage", "*.gen.ts", "drizzle"]
   },
   "organizeImports": {
     "enabled": true

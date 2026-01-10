@@ -48,10 +48,7 @@ export async function createSmtpConfig(
   return smtpConfig;
 }
 
-export async function getSmtpConfigById(
-  id: string,
-  appId: string
-): Promise<SmtpConfigRow | null> {
+export async function getSmtpConfigById(id: string, appId: string): Promise<SmtpConfigRow | null> {
   const db = getDatabase();
 
   const [smtpConfig] = await db
@@ -163,10 +160,7 @@ export interface SmtpTestResult {
   };
 }
 
-export async function testSmtpConfig(
-  id: string,
-  appId: string
-): Promise<SmtpTestResult | null> {
+export async function testSmtpConfig(id: string, appId: string): Promise<SmtpTestResult | null> {
   const db = getDatabase();
 
   const [smtpConfig] = await db

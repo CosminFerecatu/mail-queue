@@ -2,7 +2,12 @@ import { eq, and, desc, sql, isNull, or, gt } from 'drizzle-orm';
 import { getDatabase, suppressionList } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
 
-export type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'unsubscribe' | 'manual';
+export type SuppressionReason =
+  | 'hard_bounce'
+  | 'soft_bounce'
+  | 'complaint'
+  | 'unsubscribe'
+  | 'manual';
 
 export interface SuppressionEntry {
   id: string;
@@ -32,7 +37,9 @@ export interface ListSuppressionsOptions {
 /**
  * Add an email address to the suppression list
  */
-export async function addToSuppressionList(options: AddSuppressionOptions): Promise<SuppressionEntry> {
+export async function addToSuppressionList(
+  options: AddSuppressionOptions
+): Promise<SuppressionEntry> {
   const { appId, emailAddress, reason, sourceEmailId, expiresAt } = options;
   const db = getDatabase();
   const normalizedEmail = emailAddress.toLowerCase().trim();
@@ -41,12 +48,7 @@ export async function addToSuppressionList(options: AddSuppressionOptions): Prom
   const [existing] = await db
     .select()
     .from(suppressionList)
-    .where(
-      and(
-        eq(suppressionList.appId, appId),
-        eq(suppressionList.emailAddress, normalizedEmail)
-      )
-    )
+    .where(and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail)))
     .limit(1);
 
   if (existing) {
@@ -61,10 +63,7 @@ export async function addToSuppressionList(options: AddSuppressionOptions): Prom
       .where(eq(suppressionList.id, existing.id))
       .returning();
 
-    logger.info(
-      { appId, emailAddress: normalizedEmail, reason },
-      'Suppression entry updated'
-    );
+    logger.info({ appId, emailAddress: normalizedEmail, reason }, 'Suppression entry updated');
 
     return {
       id: updated?.id,
@@ -89,10 +88,7 @@ export async function addToSuppressionList(options: AddSuppressionOptions): Prom
     })
     .returning();
 
-  logger.info(
-    { appId, emailAddress: normalizedEmail, reason },
-    'Email added to suppression list'
-  );
+  logger.info({ appId, emailAddress: normalizedEmail, reason }, 'Email added to suppression list');
 
   return {
     id: created?.id,
@@ -117,19 +113,11 @@ export async function removeFromSuppressionList(
 
   const result = await db
     .delete(suppressionList)
-    .where(
-      and(
-        eq(suppressionList.appId, appId),
-        eq(suppressionList.emailAddress, normalizedEmail)
-      )
-    )
+    .where(and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail)))
     .returning({ id: suppressionList.id });
 
   if (result.length > 0) {
-    logger.info(
-      { appId, emailAddress: normalizedEmail },
-      'Email removed from suppression list'
-    );
+    logger.info({ appId, emailAddress: normalizedEmail }, 'Email removed from suppression list');
     return true;
   }
 
@@ -197,10 +185,7 @@ export async function listSuppressions(
       .orderBy(desc(suppressionList.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(suppressionList)
-      .where(whereClause),
+    db.select({ count: sql<number>`count(*)::int` }).from(suppressionList).where(whereClause),
   ]);
 
   return {
@@ -236,10 +221,7 @@ export async function bulkAddToSuppressionList(
       .select({ id: suppressionList.id })
       .from(suppressionList)
       .where(
-        and(
-          eq(suppressionList.appId, appId),
-          eq(suppressionList.emailAddress, normalizedEmail)
-        )
+        and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
       )
       .limit(1);
 
@@ -271,10 +253,7 @@ export async function cleanupExpiredSuppressions(): Promise<number> {
   const result = await db
     .delete(suppressionList)
     .where(
-      and(
-        sql`${suppressionList.expiresAt} IS NOT NULL`,
-        sql`${suppressionList.expiresAt} < ${now}`
-      )
+      and(sql`${suppressionList.expiresAt} IS NOT NULL`, sql`${suppressionList.expiresAt} < ${now}`)
     )
     .returning({ id: suppressionList.id });
 

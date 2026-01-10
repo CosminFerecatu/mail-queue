@@ -111,12 +111,7 @@ export async function getAnalyticsOverview(
       count: count(),
     })
     .from(emails)
-    .where(
-      and(
-        ...queueConditions,
-        sql`${emails.status} IN ('queued', 'processing')`
-      )
-    )
+    .where(and(...queueConditions, sql`${emails.status} IN ('queued', 'processing')`))
     .groupBy(emails.status);
 
   const queueStatus = {
@@ -496,7 +491,9 @@ export async function getReputationScore(appId: string): Promise<ReputationScore
   const complaintRate = Number.parseFloat(reputation.complaintRate24h ?? '0');
 
   if (bounceRate > 5) {
-    recommendations.push('High bounce rate detected. Clean your email list and verify addresses before sending.');
+    recommendations.push(
+      'High bounce rate detected. Clean your email list and verify addresses before sending.'
+    );
   }
   if (bounceRate > 2 && bounceRate <= 5) {
     recommendations.push('Bounce rate is elevated. Consider implementing email verification.');
@@ -505,7 +502,9 @@ export async function getReputationScore(appId: string): Promise<ReputationScore
     recommendations.push('High complaint rate. Review your opt-in process and sending frequency.');
   }
   if (complaintRate > 0.1 && complaintRate <= 0.5) {
-    recommendations.push('Complaint rate is elevated. Ensure recipients have opted in to receive emails.');
+    recommendations.push(
+      'Complaint rate is elevated. Ensure recipients have opted in to receive emails.'
+    );
   }
   if (reputation.isThrottled) {
     recommendations.push(`Sending is throttled: ${reputation.throttleReason}`);
@@ -560,11 +559,7 @@ export async function updateAppReputation(appId: string): Promise<UpdateReputati
     .select({ count: count() })
     .from(emails)
     .where(
-      and(
-        eq(emails.appId, appId),
-        eq(emails.status, 'bounced'),
-        gte(emails.createdAt, yesterday)
-      )
+      and(eq(emails.appId, appId), eq(emails.status, 'bounced'), gte(emails.createdAt, yesterday))
     );
 
   const bounceCount = bounceResult?.count ?? 0;

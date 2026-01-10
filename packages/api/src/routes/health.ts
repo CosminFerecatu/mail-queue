@@ -15,7 +15,10 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
   // Detailed health check
   app.get('/health/detailed', async (_request, reply) => {
-    const checks: Record<string, { status: HealthCheckStatus; latencyMs?: number; message?: string }> = {};
+    const checks: Record<
+      string,
+      { status: HealthCheckStatus; latencyMs?: number; message?: string }
+    > = {};
 
     // Check PostgreSQL
     const pgStart = Date.now();

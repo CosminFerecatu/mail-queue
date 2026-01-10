@@ -1,10 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { getDatabase, trackingLinks, emails, emailEvents } from '@mail-queue/db';
-import {
-  type RecordTrackingJobData,
-  QUEUE_NAMES,
-  JOB_TYPES,
-} from '@mail-queue/core';
+import { type RecordTrackingJobData, QUEUE_NAMES, JOB_TYPES } from '@mail-queue/core';
 import { getQueue } from '../lib/queue.js';
 import { logger } from '../lib/logger.js';
 import { randomBytes } from 'node:crypto';
@@ -124,9 +120,7 @@ export async function createTrackingLink(
 // Get Tracking Link by Short Code
 // ===========================================
 
-export async function getTrackingLinkByShortCode(
-  shortCode: string
-): Promise<TrackingLink | null> {
+export async function getTrackingLinkByShortCode(shortCode: string): Promise<TrackingLink | null> {
   const db = getDatabase();
 
   const [link] = await db
@@ -179,9 +173,7 @@ export function getTrackingPixel(): Buffer {
 // Record Tracking Event (via queue for async processing)
 // ===========================================
 
-export async function recordTrackingEvent(
-  options: RecordTrackingEventOptions
-): Promise<void> {
+export async function recordTrackingEvent(options: RecordTrackingEventOptions): Promise<void> {
   const { type, trackingId, linkUrl, userAgent, ipAddress } = options;
 
   // Determine the email ID
@@ -225,9 +217,7 @@ export async function recordTrackingEvent(
 // Process Tracking Event (called by worker)
 // ===========================================
 
-export async function processTrackingEvent(
-  data: RecordTrackingJobData
-): Promise<void> {
+export async function processTrackingEvent(data: RecordTrackingJobData): Promise<void> {
   const { type, emailId, trackingId, linkUrl, userAgent, ipAddress, timestamp } = data;
   const db = getDatabase();
 
@@ -451,10 +441,7 @@ export function addOpenTrackingPixel(
 export async function getTrackingLinksForEmail(emailId: string): Promise<TrackingLink[]> {
   const db = getDatabase();
 
-  const links = await db
-    .select()
-    .from(trackingLinks)
-    .where(eq(trackingLinks.emailId, emailId));
+  const links = await db.select().from(trackingLinks).where(eq(trackingLinks.emailId, emailId));
 
   return links.map((link) => ({
     id: link.id,
