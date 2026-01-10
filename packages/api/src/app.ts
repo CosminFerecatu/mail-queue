@@ -22,6 +22,9 @@ import { appRoutes } from './routes/apps.js';
 import { apiKeyRoutes } from './routes/apikeys.js';
 import { queueRoutes } from './routes/queues.js';
 import { smtpConfigRoutes } from './routes/smtp-configs.js';
+import { analyticsRoutes } from './routes/analytics.js';
+import { webhooksRoutes } from './routes/webhooks.js';
+import { trackingRoutes } from './routes/tracking.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -119,12 +122,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Register routes
   // Metrics endpoint (no prefix, no auth - protected at infrastructure level)
   await app.register(metricsRoutes);
+  // Tracking routes (no prefix, no auth - public endpoints for pixel/redirect)
+  await app.register(trackingRoutes);
   await app.register(healthRoutes, { prefix: '/v1' });
   await app.register(emailRoutes, { prefix: '/v1' });
   await app.register(appRoutes, { prefix: '/v1' });
   await app.register(apiKeyRoutes, { prefix: '/v1' });
   await app.register(queueRoutes, { prefix: '/v1' });
   await app.register(smtpConfigRoutes, { prefix: '/v1' });
+  await app.register(analyticsRoutes, { prefix: '/v1' });
+  await app.register(webhooksRoutes, { prefix: '/v1' });
 
   // Root route
   app.get('/', async () => ({

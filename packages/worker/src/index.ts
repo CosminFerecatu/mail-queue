@@ -3,13 +3,27 @@ import { initTracing, shutdown as shutdownTracing } from './lib/tracing.js';
 initTracing();
 
 import { Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { QUEUE_NAMES, type SendEmailJobData } from '@mail-queue/core';
+import {
+  QUEUE_NAMES,
+  type SendEmailJobData,
+  type DeliverWebhookJobData,
+  type RecordTrackingJobData,
+  type AggregateStatsJobData,
+  type UpdateReputationJobData,
+  JOB_TYPES,
+} from '@mail-queue/core';
 import { closeDatabase } from '@mail-queue/db';
 import { config } from './config.js';
 import { logger } from './lib/logger.js';
 import { getRedis, closeRedis } from './lib/redis.js';
 import { closeAllConnections } from './smtp/client.js';
 import { processEmailJob } from './processors/email.processor.js';
+import { processWebhookJob } from './processors/webhook.processor.js';
+import { processTrackingJob } from './processors/tracking.processor.js';
+import {
+  processAggregateStatsJob,
+  processReputationUpdateJob,
+} from './processors/analytics.processor.js';
 import {
   startMetricsServer,
   stopMetricsServer,
@@ -18,6 +32,9 @@ import {
 } from './lib/metrics.js';
 
 let emailWorker: Worker<SendEmailJobData> | null = null;
+let webhookWorker: Worker<DeliverWebhookJobData> | null = null;
+let trackingWorker: Worker<RecordTrackingJobData> | null = null;
+let analyticsWorker: Worker<AggregateStatsJobData | UpdateReputationJobData> | null = null;
 let isShuttingDown = false;
 
 async function main() {
@@ -110,7 +127,129 @@ async function main() {
     logger.warn({ jobId }, 'Job stalled');
   });
 
-  logger.info('Worker started');
+  // Create webhook worker
+  webhookWorker = new Worker<DeliverWebhookJobData>(
+    QUEUE_NAMES.WEBHOOK,
+    async (job: Job<DeliverWebhookJobData>) => {
+      await processWebhookJob(job);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 5, // Lower concurrency for webhooks
+      removeOnComplete: {
+        age: 3600, // 1 hour
+        count: 500,
+      },
+      removeOnFail: {
+        age: 604800, // 7 days
+        count: 1000,
+      },
+    }
+  );
+
+  webhookWorker.on('ready', () => {
+    logger.info('Webhook worker ready');
+  });
+
+  webhookWorker.on('failed', (job, error) => {
+    logger.error(
+      {
+        jobId: job?.id,
+        deliveryId: job?.data.webhookDeliveryId,
+        error: error.message,
+      },
+      'Webhook job failed'
+    );
+  });
+
+  webhookWorker.on('error', (error) => {
+    logger.error({ error }, 'Webhook worker error');
+  });
+
+  // Create tracking worker
+  trackingWorker = new Worker<RecordTrackingJobData>(
+    QUEUE_NAMES.TRACKING,
+    async (job: Job<RecordTrackingJobData>) => {
+      await processTrackingJob(job);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 10, // Higher concurrency for fast tracking jobs
+      removeOnComplete: {
+        age: 3600,
+        count: 10000,
+      },
+      removeOnFail: {
+        age: 86400,
+        count: 1000,
+      },
+    }
+  );
+
+  trackingWorker.on('ready', () => {
+    logger.info('Tracking worker ready');
+  });
+
+  trackingWorker.on('failed', (job, error) => {
+    logger.error(
+      {
+        jobId: job?.id,
+        type: job?.data.type,
+        emailId: job?.data.emailId,
+        error: error.message,
+      },
+      'Tracking job failed'
+    );
+  });
+
+  trackingWorker.on('error', (error) => {
+    logger.error({ error }, 'Tracking worker error');
+  });
+
+  // Create analytics worker
+  analyticsWorker = new Worker<AggregateStatsJobData | UpdateReputationJobData>(
+    QUEUE_NAMES.ANALYTICS,
+    async (job: Job<AggregateStatsJobData | UpdateReputationJobData>) => {
+      if (job.name === JOB_TYPES.AGGREGATE_STATS) {
+        await processAggregateStatsJob(job as Job<AggregateStatsJobData>);
+      } else if (job.name === JOB_TYPES.UPDATE_REPUTATION) {
+        await processReputationUpdateJob(job as Job<UpdateReputationJobData>);
+      }
+    },
+    {
+      connection: redisConnection,
+      concurrency: 2, // Low concurrency for analytics
+      removeOnComplete: {
+        age: 3600,
+        count: 100,
+      },
+      removeOnFail: {
+        age: 86400,
+        count: 100,
+      },
+    }
+  );
+
+  analyticsWorker.on('ready', () => {
+    logger.info('Analytics worker ready');
+  });
+
+  analyticsWorker.on('failed', (job, error) => {
+    logger.error(
+      {
+        jobId: job?.id,
+        name: job?.name,
+        error: error.message,
+      },
+      'Analytics job failed'
+    );
+  });
+
+  analyticsWorker.on('error', (error) => {
+    logger.error({ error }, 'Analytics worker error');
+  });
+
+  logger.info('All workers started');
 }
 
 // Graceful shutdown
@@ -126,11 +265,29 @@ async function shutdown(signal: string) {
   setWorkerStatus(false);
 
   try {
-    // Close worker (waits for active jobs to complete)
+    // Close all workers (waits for active jobs to complete)
     if (emailWorker) {
       logger.info('Closing email worker...');
       await emailWorker.close();
       logger.info('Email worker closed');
+    }
+
+    if (webhookWorker) {
+      logger.info('Closing webhook worker...');
+      await webhookWorker.close();
+      logger.info('Webhook worker closed');
+    }
+
+    if (trackingWorker) {
+      logger.info('Closing tracking worker...');
+      await trackingWorker.close();
+      logger.info('Tracking worker closed');
+    }
+
+    if (analyticsWorker) {
+      logger.info('Closing analytics worker...');
+      await analyticsWorker.close();
+      logger.info('Analytics worker closed');
     }
 
     // Close SMTP connections
