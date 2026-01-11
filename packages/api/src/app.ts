@@ -144,6 +144,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(gdprRoutes, { prefix: '/v1' });
   await app.register(retentionRoutes, { prefix: '/v1' });
 
+  // Alias: /suppressions -> /suppression (plural form for consistency)
+  app.all('/v1/suppressions', async (request, reply) => {
+    const query = request.url.includes('?') ? request.url.substring(request.url.indexOf('?')) : '';
+    return reply.status(308).redirect(`/v1/suppression${query}`);
+  });
+  app.all('/v1/suppressions/*', async (request, reply) => {
+    const path = (request.params as { '*': string })['*'];
+    const query = request.url.includes('?') ? request.url.substring(request.url.indexOf('?')) : '';
+    return reply.status(308).redirect(`/v1/suppression/${path}${query}`);
+  });
+
   // Root route
   app.get('/', async () => ({
     name: 'mail-queue-api',

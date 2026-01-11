@@ -269,7 +269,8 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     }
   );
 
-  // Export suppression list as CSV
+  // Export suppression list
+  // Returns JSON by default, or CSV with ?format=csv
   app.get(
     '/suppression/export',
     { preHandler: requireScope('suppression:manage') },
@@ -283,6 +284,9 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
           },
         });
       }
+
+      const query = request.query as { format?: string };
+      const format = query.format?.toLowerCase() === 'csv' ? 'csv' : 'json';
 
       // Get all suppression entries (using cursor pagination for export)
       let allEntries: Array<{
@@ -308,26 +312,43 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         cursor = result.cursor;
       }
 
-      // Generate CSV
-      const csvHeader = 'email_address,reason,expires_at,created_at';
-      const csvRows = allEntries.map((entry) => {
-        const expiresAt = entry.expiresAt ? entry.expiresAt.toISOString() : '';
-        const createdAt = entry.createdAt.toISOString();
-        return `${entry.emailAddress},${entry.reason},${expiresAt},${createdAt}`;
-      });
-      const csv = [csvHeader, ...csvRows].join('\n');
-
       // Log audit event
       await logAuditEvent(request, AuditActions.SUPPRESSION_EXPORT, 'suppression_list', undefined, {
-        after: { entriesExported: allEntries.length },
+        after: { entriesExported: allEntries.length, format },
       });
 
-      reply.header('Content-Type', 'text/csv');
-      reply.header(
-        'Content-Disposition',
-        `attachment; filename="suppression_list_${new Date().toISOString().split('T')[0]}.csv"`
-      );
-      return csv;
+      // Return CSV format if requested
+      if (format === 'csv') {
+        const csvHeader = 'email_address,reason,expires_at,created_at';
+        const csvRows = allEntries.map((entry) => {
+          const expiresAt = entry.expiresAt ? entry.expiresAt.toISOString() : '';
+          const createdAt = entry.createdAt.toISOString();
+          return `${entry.emailAddress},${entry.reason},${expiresAt},${createdAt}`;
+        });
+        const csv = [csvHeader, ...csvRows].join('\n');
+
+        reply.header('Content-Type', 'text/csv');
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="suppression_list_${new Date().toISOString().split('T')[0]}.csv"`
+        );
+        return csv;
+      }
+
+      // Return JSON format (default)
+      return {
+        success: true,
+        data: {
+          entries: allEntries.map((entry) => ({
+            emailAddress: entry.emailAddress,
+            reason: entry.reason,
+            expiresAt: entry.expiresAt?.toISOString() ?? null,
+            createdAt: entry.createdAt.toISOString(),
+          })),
+          totalCount: allEntries.length,
+          exportedAt: new Date().toISOString(),
+        },
+      };
     }
   );
 

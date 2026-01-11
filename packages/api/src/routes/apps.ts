@@ -250,8 +250,9 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(204).send();
   });
 
-  // Regenerate webhook secret
-  app.post('/apps/:id/regenerate-webhook-secret', async (request, reply) => {
+  // Create/regenerate webhook secret
+  // POST to create a new secret (replaces existing)
+  app.post('/apps/:id/webhook-secret', async (request, reply) => {
     const paramsResult = ParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
