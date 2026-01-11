@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { CreateApiKeySchema } from '@mail-queue/core';
 import {
@@ -10,8 +10,45 @@ import {
   rotateApiKey,
 } from '../services/apikey.service.js';
 import { getAppById } from '../services/app.service.js';
-import { requireAdminAuth, requireAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
+
+// Helper to verify SaaS user owns the app
+async function verifyAppOwnership(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  appId: string
+): Promise<boolean> {
+  // Admin can access any app
+  if (request.isAdmin) return true;
+
+  // SaaS users must own the app through their account
+  const accountId = request.accountId;
+  if (!accountId) {
+    reply.status(401).send({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+    });
+    return false;
+  }
+
+  const app = await getAppById(appId);
+  if (!app || app.accountId !== accountId) {
+    reply.status(403).send({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'You do not have access to this app',
+      },
+    });
+    return false;
+  }
+
+  return true;
+}
 
 const AppParamsSchema = z.object({
   appId: z.string().uuid(),
@@ -35,8 +72,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
   // Admin routes for managing API keys
   // These are nested under /apps/:appId/api-keys
 
-  // Create API key (admin only)
-  app.post('/apps/:appId/api-keys', { preHandler: requireAdminAuth }, async (request, reply) => {
+  // Create API key (admin or app owner)
+  app.post('/apps/:appId/api-keys', { preHandler: requireAuth }, async (request, reply) => {
     const paramsResult = AppParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -49,6 +86,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         },
       });
     }
+
+    // Verify ownership for SaaS users
+    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    if (!hasAccess) return;
 
     // Check for idempotent replay
     const endpoint = `POST:/apps/${paramsResult.data.appId}/api-keys`;
@@ -68,7 +109,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    // Check if app exists
+    // Get the app (already verified ownership above)
     const appData = await getAppById(paramsResult.data.appId);
     if (!appData) {
       return reply.status(404).send({
@@ -109,8 +150,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(responseBody);
   });
 
-  // List API keys for an app (admin only)
-  app.get('/apps/:appId/api-keys', { preHandler: requireAdminAuth }, async (request, reply) => {
+  // List API keys for an app (admin or app owner)
+  app.get('/apps/:appId/api-keys', { preHandler: requireAuth }, async (request, reply) => {
     const paramsResult = AppParamsSchema.safeParse(request.params);
 
     if (!paramsResult.success) {
@@ -123,6 +164,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         },
       });
     }
+
+    // Verify ownership for SaaS users
+    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    if (!hasAccess) return;
 
     const queryResult = ListQuerySchema.safeParse(request.query);
 
@@ -164,58 +209,58 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  // Get API key by ID (admin only)
-  app.get(
-    '/apps/:appId/api-keys/:keyId',
-    { preHandler: requireAdminAuth },
-    async (request, reply) => {
-      const paramsResult = KeyParamsSchema.safeParse(request.params);
+  // Get API key by ID (admin or app owner)
+  app.get('/apps/:appId/api-keys/:keyId', { preHandler: requireAuth }, async (request, reply) => {
+    const paramsResult = KeyParamsSchema.safeParse(request.params);
 
-      if (!paramsResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid parameters',
-            details: paramsResult.error.issues,
-          },
-        });
-      }
-
-      const key = await getApiKeyById(paramsResult.data.keyId, paramsResult.data.appId);
-
-      if (!key) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'API key not found',
-          },
-        });
-      }
-
-      return {
-        success: true,
-        data: {
-          id: key.id,
-          name: key.name,
-          keyPrefix: key.keyPrefix,
-          scopes: key.scopes,
-          rateLimit: key.rateLimit,
-          ipAllowlist: key.ipAllowlist,
-          expiresAt: key.expiresAt,
-          isActive: key.isActive,
-          createdAt: key.createdAt,
-          lastUsedAt: key.lastUsedAt,
+    if (!paramsResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid parameters',
+          details: paramsResult.error.issues,
         },
-      };
+      });
     }
-  );
 
-  // Revoke API key (admin only)
+    // Verify ownership for SaaS users
+    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    if (!hasAccess) return;
+
+    const key = await getApiKeyById(paramsResult.data.keyId, paramsResult.data.appId);
+
+    if (!key) {
+      return reply.status(404).send({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'API key not found',
+        },
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        id: key.id,
+        name: key.name,
+        keyPrefix: key.keyPrefix,
+        scopes: key.scopes,
+        rateLimit: key.rateLimit,
+        ipAllowlist: key.ipAllowlist,
+        expiresAt: key.expiresAt,
+        isActive: key.isActive,
+        createdAt: key.createdAt,
+        lastUsedAt: key.lastUsedAt,
+      },
+    };
+  });
+
+  // Revoke API key (admin or app owner)
   app.post(
     '/apps/:appId/api-keys/:keyId/revoke',
-    { preHandler: requireAdminAuth },
+    { preHandler: requireAuth },
     async (request, reply) => {
       const paramsResult = KeyParamsSchema.safeParse(request.params);
 
@@ -229,6 +274,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
           },
         });
       }
+
+      // Verify ownership for SaaS users
+      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      if (!hasAccess) return;
 
       const revoked = await revokeApiKey(paramsResult.data.keyId, paramsResult.data.appId);
 
@@ -256,10 +305,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Delete API key (admin only)
+  // Delete API key (admin or app owner)
   app.delete(
     '/apps/:appId/api-keys/:keyId',
-    { preHandler: requireAdminAuth },
+    { preHandler: requireAuth },
     async (request, reply) => {
       const paramsResult = KeyParamsSchema.safeParse(request.params);
 
@@ -273,6 +322,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
           },
         });
       }
+
+      // Verify ownership for SaaS users
+      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      if (!hasAccess) return;
 
       const deleted = await deleteApiKey(paramsResult.data.keyId, paramsResult.data.appId);
 
@@ -290,10 +343,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Rotate API key (admin only)
+  // Rotate API key (admin or app owner)
   app.post(
     '/apps/:appId/api-keys/:keyId/rotate',
-    { preHandler: requireAdminAuth },
+    { preHandler: requireAuth },
     async (request, reply) => {
       const paramsResult = KeyParamsSchema.safeParse(request.params);
 
@@ -307,6 +360,10 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
           },
         });
       }
+
+      // Verify ownership for SaaS users
+      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      if (!hasAccess) return;
 
       const result = await rotateApiKey(paramsResult.data.keyId, paramsResult.data.appId);
 

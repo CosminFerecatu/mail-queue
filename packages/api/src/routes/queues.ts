@@ -14,6 +14,8 @@ import {
 } from '../services/queue.service.js';
 import { requireAuth } from '../middleware/auth.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
+import { canCreateQueue } from '../services/account.service.js';
+import { getAppById } from '../services/app.service.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -72,6 +74,34 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
           message: 'Cannot create queue for another app',
         },
       });
+    }
+
+    // For SaaS users, check queue limit per app
+    const accountId = request.accountId;
+    if (accountId) {
+      // Verify the app belongs to this account
+      const app = await getAppById(appId);
+      if (!app || app.accountId !== accountId) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Cannot create queue for an app you do not own',
+          },
+        });
+      }
+
+      const limitCheck = await canCreateQueue(accountId, appId);
+      if (!limitCheck.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'LIMIT_EXCEEDED',
+            message: `Queue limit reached for this app (${limitCheck.current}/${limitCheck.max}). Upgrade your plan to create more queues.`,
+            upgrade: true,
+          },
+        });
+      }
     }
 
     try {

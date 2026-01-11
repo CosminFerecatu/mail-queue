@@ -8,6 +8,7 @@ import {
   uuid,
   integer,
 } from 'drizzle-orm/pg-core';
+import { accounts } from './accounts.js';
 
 // ===========================================
 // Apps Table
@@ -17,6 +18,10 @@ export const apps = pgTable(
   'apps',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Account ownership (null for legacy/admin-created apps)
+    accountId: uuid('account_id').references(() => accounts.id, {
+      onDelete: 'cascade',
+    }),
     name: text('name').notNull(),
     description: text('description'),
     isActive: boolean('is_active').notNull().default(true),
@@ -34,7 +39,10 @@ export const apps = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('apps_is_active_idx').on(table.isActive)]
+  (table) => [
+    index('apps_is_active_idx').on(table.isActive),
+    index('apps_account_id_idx').on(table.accountId),
+  ]
 );
 
 export type AppRow = typeof apps.$inferSelect;

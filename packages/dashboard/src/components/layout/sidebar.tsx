@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Mail,
@@ -12,6 +12,7 @@ import {
   Users,
   ShieldBan,
   LogOut,
+  Key,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -26,16 +27,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { AppSwitcher } from './app-switcher';
 
 const navigation = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Apps', href: '/dashboard/apps', icon: AppWindow },
+];
+
+// App-scoped navigation (requires selected app)
+const appNavigation = [
   { name: 'Queues', href: '/dashboard/queues', icon: Layers },
   { name: 'Emails', href: '/dashboard/emails', icon: Mail },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
+  { name: 'API Keys', href: '/dashboard/api-keys', icon: Key },
   { name: 'Suppression', href: '/dashboard/suppression', icon: ShieldBan },
 ];
 
+// Team/Account navigation
+const teamNavigation = [
+  { name: 'Team', href: '/dashboard/team', icon: Users },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+];
+
+// Admin navigation (for legacy admin users)
 const adminNavigation = [
   { name: 'Users', href: '/dashboard/users', icon: Users },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
@@ -52,12 +66,18 @@ interface SidebarProps {
 
 export function Sidebar({ user, onLogout }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const isAdminUser = user?.role === 'super_admin' || user?.role === 'admin';
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return pathname === '/dashboard';
     }
     return pathname.startsWith(href);
+  };
+
+  const handleCreateApp = () => {
+    router.push('/dashboard/apps?create=true');
   };
 
   return (
@@ -69,7 +89,13 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         </Link>
       </div>
 
+      {/* App Switcher */}
+      <div className="px-3 py-3 border-b">
+        <AppSwitcher onCreateApp={handleCreateApp} />
+      </div>
+
       <ScrollArea className="flex-1 px-3 py-4">
+        {/* Main navigation */}
         <nav className="space-y-1">
           {navigation.map((item) => (
             <Link
@@ -88,7 +114,58 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
           ))}
         </nav>
 
-        {user?.role === 'super_admin' || user?.role === 'admin' ? (
+        {/* App-scoped navigation */}
+        <Separator className="my-4" />
+        <div className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
+          Current App
+        </div>
+        <nav className="space-y-1">
+          {appNavigation.map((item) => (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                isActive(item.href)
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              )}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.name}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Team/Account navigation (for SaaS users) */}
+        {!isAdminUser && (
+          <>
+            <Separator className="my-4" />
+            <div className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
+              Account
+            </div>
+            <nav className="space-y-1">
+              {teamNavigation.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    isActive(item.href)
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.name}
+                </Link>
+              ))}
+            </nav>
+          </>
+        )}
+
+        {/* Admin navigation (for legacy admin users) */}
+        {isAdminUser && (
           <>
             <Separator className="my-4" />
             <div className="mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
@@ -112,7 +189,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
               ))}
             </nav>
           </>
-        ) : null}
+        )}
       </ScrollArea>
 
       <div className="border-t p-3">

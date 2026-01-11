@@ -5,12 +5,14 @@ import {
   createApp,
   getAppById,
   getApps,
+  getAppsByAccountId,
   updateApp,
   deleteApp,
   regenerateWebhookSecret,
 } from '../services/app.service.js';
-import { requireAdminAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
+import { canCreateApp } from '../services/account.service.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -26,8 +28,8 @@ const ListQuerySchema = z.object({
 });
 
 export async function appRoutes(app: FastifyInstance): Promise<void> {
-  // All app management requires admin auth
-  app.addHook('preHandler', requireAdminAuth);
+  // App management requires auth (admin or SaaS user)
+  app.addHook('preHandler', requireAuth);
 
   // Create app
   app.post('/apps', async (request, reply) => {
@@ -48,8 +50,27 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // For SaaS users, check app limit
+    const accountId = request.accountId;
+    if (accountId) {
+      const limitCheck = await canCreateApp(accountId);
+      if (!limitCheck.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: {
+            code: 'LIMIT_EXCEEDED',
+            message: `App limit reached (${limitCheck.current}/${limitCheck.max}). Upgrade your plan to create more apps.`,
+            upgrade: true,
+          },
+        });
+      }
+    }
+
     try {
-      const newApp = await createApp(result.data);
+      const newApp = await createApp({
+        ...result.data,
+        accountId: accountId ?? undefined,
+      });
 
       const responseBody = {
         success: true,
@@ -94,7 +115,32 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { limit, cursor, isActive } = queryResult.data;
+    const accountId = request.accountId;
 
+    // For SaaS users, only return their apps
+    if (accountId) {
+      const appList = await getAppsByAccountId(accountId);
+      return {
+        success: true,
+        data: appList.map((a) => ({
+          id: a.id,
+          name: a.name,
+          description: a.description,
+          isActive: a.isActive,
+          sandboxMode: a.sandboxMode,
+          webhookUrl: a.webhookUrl,
+          dailyLimit: a.dailyLimit,
+          monthlyLimit: a.monthlyLimit,
+          settings: a.settings,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+        })),
+        cursor: null,
+        hasMore: false,
+      };
+    }
+
+    // Admin users get all apps with pagination
     const result = await getApps({ limit, cursor, isActive });
 
     return {

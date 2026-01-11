@@ -13,7 +13,10 @@ import { config } from '../config.js';
 interface JwtPayload {
   sub: string;
   email: string;
-  role: string;
+  role?: string;
+  // SaaS token fields
+  accountId?: string;
+  accountRole?: 'owner' | 'admin' | 'editor' | 'viewer';
 }
 
 declare module 'fastify' {
@@ -23,6 +26,9 @@ declare module 'fastify' {
     isAdmin?: boolean;
     userId?: string;
     userRole?: string;
+    // SaaS fields (for dashboard users)
+    accountId?: string;
+    accountRole?: 'owner' | 'admin' | 'editor' | 'viewer';
   }
 }
 
@@ -32,6 +38,9 @@ export async function authPlugin(app: FastifyInstance): Promise<void> {
   app.decorateRequest('isAdmin', false);
   app.decorateRequest('userId', undefined);
   app.decorateRequest('userRole', undefined);
+  // SaaS fields
+  app.decorateRequest('accountId', undefined);
+  app.decorateRequest('accountRole', undefined);
 }
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -106,10 +115,24 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
   try {
     const payload = jwt.verify(apiKeyString, config.jwtSecret) as JwtPayload;
     request.userId = payload.sub;
-    request.userRole = payload.role;
-    // Dashboard users with super_admin or admin role get admin access
-    if (payload.role === 'super_admin' || payload.role === 'admin') {
-      request.isAdmin = true;
+
+    // Handle SaaS tokens (have accountId and accountRole)
+    if (payload.accountId) {
+      request.accountId = payload.accountId;
+      request.accountRole = payload.accountRole;
+      // SaaS owners/admins get admin-level access
+      if (payload.accountRole === 'owner' || payload.accountRole === 'admin') {
+        request.isAdmin = true;
+      }
+    }
+
+    // Handle legacy admin tokens (have role)
+    if (payload.role) {
+      request.userRole = payload.role;
+      // Dashboard users with super_admin or admin role get admin access
+      if (payload.role === 'super_admin' || payload.role === 'admin') {
+        request.isAdmin = true;
+      }
     }
     return;
   } catch {
@@ -227,9 +250,22 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
   try {
     const payload = jwt.verify(apiKeyString, config.jwtSecret) as JwtPayload;
     request.userId = payload.sub;
-    request.userRole = payload.role;
-    if (payload.role === 'super_admin' || payload.role === 'admin') {
-      request.isAdmin = true;
+
+    // Handle SaaS tokens (have accountId and accountRole)
+    if (payload.accountId) {
+      request.accountId = payload.accountId;
+      request.accountRole = payload.accountRole;
+      if (payload.accountRole === 'owner' || payload.accountRole === 'admin') {
+        request.isAdmin = true;
+      }
+    }
+
+    // Handle legacy admin tokens (have role)
+    if (payload.role) {
+      request.userRole = payload.role;
+      if (payload.role === 'super_admin' || payload.role === 'admin') {
+        request.isAdmin = true;
+      }
     }
   } catch {
     // JWT verification failed, but this is optional auth so we don't error

@@ -3,15 +3,17 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
-import { useAuth } from '@/hooks/use-auth';
+import { useSaaSAuth } from '@/hooks/use-saas-auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AppProvider } from '@/contexts/app-context';
+import { Toaster } from '@/components/ui/toaster';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading, logout } = useAuth();
+  const { user, account, loading, logout } = useSaaSAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -47,10 +49,20 @@ export default function DashboardLayout({
     return null;
   }
 
+  // Combine user and account role for Sidebar
+  const sidebarUser = {
+    name: user.name,
+    email: user.email,
+    role: account?.role ?? 'viewer',
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar user={user} onLogout={logout} />
-      <main className="flex-1 overflow-auto">{children}</main>
-    </div>
+    <AppProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar user={sidebarUser} onLogout={logout} />
+        <main className="flex-1 overflow-auto">{children}</main>
+      </div>
+      <Toaster />
+    </AppProvider>
   );
 }

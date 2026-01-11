@@ -18,7 +18,7 @@ export interface AppWithStats extends AppRow {
   queueCount?: number;
 }
 
-export async function createApp(input: CreateAppInput): Promise<AppRow> {
+export async function createApp(input: CreateAppInput & { accountId?: string }): Promise<AppRow> {
   const db = getDatabase();
 
   let webhookSecret: string | null = null;
@@ -40,6 +40,7 @@ export async function createApp(input: CreateAppInput): Promise<AppRow> {
       dailyLimit: input.dailyLimit ?? null,
       monthlyLimit: input.monthlyLimit ?? null,
       settings: input.settings ?? null,
+      accountId: input.accountId ?? null,
     })
     .returning();
 
@@ -56,6 +57,12 @@ export async function getAppById(id: string): Promise<AppRow | null> {
   const [app] = await db.select().from(apps).where(eq(apps.id, id)).limit(1);
 
   return app ?? null;
+}
+
+export async function getAppsByAccountId(accountId: string): Promise<AppRow[]> {
+  const db = getDatabase();
+
+  return db.select().from(apps).where(eq(apps.accountId, accountId)).orderBy(desc(apps.createdAt));
 }
 
 export interface AppListResult {

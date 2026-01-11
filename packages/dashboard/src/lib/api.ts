@@ -1,3 +1,5 @@
+import { getSession } from 'next-auth/react';
+
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3000';
 
 type RequestOptions = {
@@ -19,6 +21,14 @@ class ApiError extends Error {
 
 async function getToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
+
+  // First try to get token from NextAuth session
+  const session = await getSession();
+  if (session?.accessToken) {
+    return session.accessToken;
+  }
+
+  // Fallback to legacy localStorage token for admin users
   return localStorage.getItem('mq_token');
 }
 

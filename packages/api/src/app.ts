@@ -30,6 +30,9 @@ import { scheduledJobsRoutes } from './routes/scheduled-jobs.js';
 import { auditRoutes } from './routes/audit.js';
 import { gdprRoutes } from './routes/gdpr.js';
 import { retentionRoutes } from './routes/retention.js';
+import { saasAuthRoutes } from './routes/saas-auth.js';
+import { accountRoutes } from './routes/account.js';
+import { teamRoutes } from './routes/team.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -130,6 +133,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Tracking routes (no prefix, no auth - public endpoints for pixel/redirect)
   await app.register(trackingRoutes);
   await app.register(authRoutes, { prefix: '/v1/auth' });
+  await app.register(saasAuthRoutes, { prefix: '/v1/saas' });
+  await app.register(accountRoutes, { prefix: '/v1/account' });
+  await app.register(teamRoutes, { prefix: '/v1/team' });
   await app.register(healthRoutes, { prefix: '/v1' });
   await app.register(emailRoutes, { prefix: '/v1' });
   await app.register(appRoutes, { prefix: '/v1' });

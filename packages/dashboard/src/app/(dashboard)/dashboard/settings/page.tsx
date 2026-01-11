@@ -9,10 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/hooks/use-auth';
+import { useSaaSAuth } from '@/hooks/use-saas-auth';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user } = useSaaSAuth();
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
