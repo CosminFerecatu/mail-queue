@@ -45,20 +45,27 @@ export async function api<T>(endpoint: string, options: RequestOptions = {}): Pr
     throw new ApiError(response.status, data.message || 'Request failed', data);
   }
 
+  if (response.status === 204) {
+    return {} as Promise<T>;
+  }
+
   return response.json() as Promise<T>;
 }
 
 // Auth
 export async function login(email: string, password: string) {
-  const data = await api<{
-    token: string;
-    user: { id: string; email: string; name: string; role: string };
+  const response = await api<{
+    success: boolean;
+    data: {
+      token: string;
+      user: { id: string; email: string; name: string; role: string };
+    };
   }>('/v1/auth/login', {
     method: 'POST',
     body: { email, password },
   });
-  localStorage.setItem('mq_token', data.token);
-  return data;
+  localStorage.setItem('mq_token', response.data.token);
+  return response.data;
 }
 
 export async function logout() {
@@ -66,23 +73,31 @@ export async function logout() {
 }
 
 export async function getCurrentUser() {
-  return api<{ id: string; email: string; name: string; role: string }>('/v1/auth/me');
+  const response = await api<{
+    success: boolean;
+    data: { id: string; email: string; name: string; role: string };
+  }>('/v1/auth/me');
+  return response.data;
 }
 
 // Dashboard
 export async function getOverview() {
-  return api<{
-    totalEmailsToday: number;
-    totalEmailsMonth: number;
-    deliveryRate: number;
-    bounceRate: number;
-    openRate: number;
-    clickRate: number;
-    activeApps: number;
-    activeQueues: number;
-    pendingEmails: number;
-    processingEmails: number;
+  const response = await api<{
+    success: boolean;
+    data: {
+      totalEmailsToday: number;
+      totalEmailsMonth: number;
+      deliveryRate: number;
+      bounceRate: number;
+      openRate: number;
+      clickRate: number;
+      activeApps: number;
+      activeQueues: number;
+      pendingEmails: number;
+      processingEmails: number;
+    };
   }>('/v1/analytics/overview');
+  return response.data;
 }
 
 // Apps
@@ -97,18 +112,27 @@ export async function getApps(params?: { limit?: number; cursor?: string }) {
 }
 
 export async function getApp(id: string) {
-  return api<App>(`/v1/apps/${id}`);
+  const response = await api<{ success: boolean; data: App }>(`/v1/apps/${id}`);
+  return response.data;
 }
 
 export async function createApp(data: { name: string; description?: string }) {
-  return api<App>('/v1/apps', { method: 'POST', body: data });
+  const response = await api<{ success: boolean; data: App }>('/v1/apps', {
+    method: 'POST',
+    body: data,
+  });
+  return response.data;
 }
 
 export async function updateApp(
   id: string,
   data: { name?: string; description?: string; isActive?: boolean }
 ) {
-  return api<App>(`/v1/apps/${id}`, { method: 'PATCH', body: data });
+  const response = await api<{ success: boolean; data: App }>(`/v1/apps/${id}`, {
+    method: 'PATCH',
+    body: data,
+  });
+  return response.data;
 }
 
 export async function deleteApp(id: string) {
@@ -128,7 +152,8 @@ export async function getQueues(params?: { appId?: string; limit?: number; curso
 }
 
 export async function getQueue(id: string) {
-  return api<Queue>(`/v1/queues/${id}`);
+  const response = await api<{ success: boolean; data: Queue }>(`/v1/queues/${id}`);
+  return response.data;
 }
 
 export async function createQueue(data: {
@@ -137,11 +162,19 @@ export async function createQueue(data: {
   priority?: number;
   rateLimit?: number;
 }) {
-  return api<Queue>('/v1/queues', { method: 'POST', body: data });
+  const response = await api<{ success: boolean; data: Queue }>('/v1/queues', {
+    method: 'POST',
+    body: data,
+  });
+  return response.data;
 }
 
 export async function updateQueue(id: string, data: Partial<Queue>) {
-  return api<Queue>(`/v1/queues/${id}`, { method: 'PATCH', body: data });
+  const response = await api<{ success: boolean; data: Queue }>(`/v1/queues/${id}`, {
+    method: 'PATCH',
+    body: data,
+  });
+  return response.data;
 }
 
 export async function deleteQueue(id: string) {
@@ -149,11 +182,17 @@ export async function deleteQueue(id: string) {
 }
 
 export async function pauseQueue(id: string) {
-  return api<Queue>(`/v1/queues/${id}/pause`, { method: 'POST' });
+  const response = await api<{ success: boolean; data: Queue }>(`/v1/queues/${id}/pause`, {
+    method: 'POST',
+  });
+  return response.data;
 }
 
 export async function resumeQueue(id: string) {
-  return api<Queue>(`/v1/queues/${id}/resume`, { method: 'POST' });
+  const response = await api<{ success: boolean; data: Queue }>(`/v1/queues/${id}/resume`, {
+    method: 'POST',
+  });
+  return response.data;
 }
 
 // Emails
@@ -177,15 +216,20 @@ export async function getEmails(params?: {
 }
 
 export async function getEmail(id: string) {
-  return api<Email>(`/v1/emails/${id}`);
+  const response = await api<{ success: boolean; data: Email }>(`/v1/emails/${id}`);
+  return response.data;
 }
 
 export async function getEmailEvents(id: string) {
-  return api<EmailEvent[]>(`/v1/emails/${id}/events`);
+  const response = await api<{ success: boolean; data: EmailEvent[] }>(`/v1/emails/${id}/events`);
+  return response.data;
 }
 
 export async function retryEmail(id: string) {
-  return api<Email>(`/v1/emails/${id}/retry`, { method: 'POST' });
+  const response = await api<{ success: boolean; data: Email }>(`/v1/emails/${id}/retry`, {
+    method: 'POST',
+  });
+  return response.data;
 }
 
 export async function cancelEmail(id: string) {
@@ -205,9 +249,11 @@ export async function getDeliveryStats(params: {
   searchParams.set('from', params.from);
   searchParams.set('to', params.to);
 
-  return api<{ date: string; sent: number; delivered: number; bounced: number; failed: number }[]>(
-    `/v1/analytics/delivery?${searchParams.toString()}`
-  );
+  const response = await api<{
+    success: boolean;
+    data: { date: string; sent: number; delivered: number; bounced: number; failed: number }[];
+  }>(`/v1/analytics/delivery?${searchParams.toString()}`);
+  return response.data;
 }
 
 export async function getEngagementStats(params: {
@@ -222,9 +268,11 @@ export async function getEngagementStats(params: {
   searchParams.set('from', params.from);
   searchParams.set('to', params.to);
 
-  return api<{ date: string; opens: number; clicks: number; unsubscribes: number }[]>(
-    `/v1/analytics/engagement?${searchParams.toString()}`
-  );
+  const response = await api<{
+    success: boolean;
+    data: { date: string; opens: number; clicks: number; unsubscribes: number }[];
+  }>(`/v1/analytics/engagement?${searchParams.toString()}`);
+  return response.data;
 }
 
 // Types
