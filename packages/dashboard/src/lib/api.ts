@@ -19,17 +19,56 @@ class ApiError extends Error {
   }
 }
 
+// Token cache to avoid redundant getSession() calls
+let cachedToken: string | null = null;
+let tokenPromise: Promise<string | null> | null = null;
+let tokenExpiry = 0;
+const TOKEN_CACHE_MS = 30 * 1000; // Cache token for 30 seconds
+
 async function getToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
 
-  // First try to get token from NextAuth session
-  const session = await getSession();
-  if (session?.accessToken) {
-    return session.accessToken;
+  // Return cached token if still valid
+  if (cachedToken && Date.now() < tokenExpiry) {
+    return cachedToken;
   }
 
-  // Fallback to legacy localStorage token for admin users
-  return localStorage.getItem('mq_token');
+  // If a fetch is already in progress, wait for it
+  if (tokenPromise) {
+    return tokenPromise;
+  }
+
+  // Start a new token fetch
+  tokenPromise = (async () => {
+    try {
+      // First try to get token from NextAuth session
+      const session = await getSession();
+      if (session?.accessToken) {
+        cachedToken = session.accessToken;
+        tokenExpiry = Date.now() + TOKEN_CACHE_MS;
+        return cachedToken;
+      }
+
+      // Fallback to legacy localStorage token for admin users
+      const localToken = localStorage.getItem('mq_token');
+      if (localToken) {
+        cachedToken = localToken;
+        tokenExpiry = Date.now() + TOKEN_CACHE_MS;
+      }
+      return localToken;
+    } finally {
+      tokenPromise = null;
+    }
+  })();
+
+  return tokenPromise;
+}
+
+// Clear token cache (call on logout)
+export function clearTokenCache() {
+  cachedToken = null;
+  tokenPromise = null;
+  tokenExpiry = 0;
 }
 
 export async function api<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -80,6 +119,7 @@ export async function login(email: string, password: string) {
 
 export async function logout() {
   localStorage.removeItem('mq_token');
+  clearTokenCache();
 }
 
 export async function getCurrentUser() {

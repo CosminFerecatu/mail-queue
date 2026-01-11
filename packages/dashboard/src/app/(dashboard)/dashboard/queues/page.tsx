@@ -43,7 +43,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   getQueues,
-  getApps,
   createQueue,
   updateQueue,
   deleteQueue,
@@ -51,9 +50,11 @@ import {
   resumeQueue,
   type Queue,
 } from '@/lib/api';
+import { useAppContext } from '@/contexts/app-context';
 
 export default function QueuesPage() {
   const queryClient = useQueryClient();
+  const { apps } = useAppContext();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingQueue, setEditingQueue] = useState<Queue | null>(null);
   const [deletingQueue, setDeletingQueue] = useState<Queue | null>(null);
@@ -62,11 +63,6 @@ export default function QueuesPage() {
     name: '',
     priority: 5,
     rateLimit: '',
-  });
-
-  const { data: appsData } = useQuery({
-    queryKey: ['apps'],
-    queryFn: () => getApps({ limit: 100 }),
   });
 
   const { data, isLoading } = useQuery({
@@ -136,7 +132,7 @@ export default function QueuesPage() {
   };
 
   const getAppName = (appId: string) => {
-    const app = appsData?.data.find((a) => a.id === appId);
+    const app = apps.find((a) => a.id === appId);
     return app?.name || 'Unknown';
   };
 
@@ -284,7 +280,7 @@ export default function QueuesPage() {
                   <SelectValue placeholder="Select an application" />
                 </SelectTrigger>
                 <SelectContent>
-                  {appsData?.data.map((app) => (
+                  {apps.map((app) => (
                     <SelectItem key={app.id} value={app.id}>
                       {app.name}
                     </SelectItem>

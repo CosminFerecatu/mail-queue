@@ -55,10 +55,10 @@ import {
   getEmailEvents,
   retryEmail,
   cancelEmail,
-  getApps,
   getQueues,
   type Email,
 } from '@/lib/api';
+import { useAppContext } from '@/contexts/app-context';
 
 const statusConfig: Record<
   string,
@@ -79,16 +79,12 @@ const statusConfig: Record<
 
 export default function EmailsPage() {
   const queryClient = useQueryClient();
+  const { apps } = useAppContext();
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [filters, setFilters] = useState({
     status: '',
     appId: '',
     queueId: '',
-  });
-
-  const { data: appsData } = useQuery({
-    queryKey: ['apps'],
-    queryFn: () => getApps({ limit: 100 }),
   });
 
   const { data: queuesData } = useQuery({
@@ -147,7 +143,7 @@ export default function EmailsPage() {
   };
 
   const getAppName = (appId: string) => {
-    const app = appsData?.data.find((a) => a.id === appId);
+    const app = apps.find((a) => a.id === appId);
     return app?.name || 'Unknown';
   };
 
@@ -193,7 +189,7 @@ export default function EmailsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Apps</SelectItem>
-                {appsData?.data.map((app) => (
+                {apps.map((app) => (
                   <SelectItem key={app.id} value={app.id}>
                     {app.name}
                   </SelectItem>

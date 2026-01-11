@@ -26,7 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getDeliveryStats, getEngagementStats, getApps } from '@/lib/api';
+import { getDeliveryStats, getEngagementStats } from '@/lib/api';
+import { useAppContext } from '@/contexts/app-context';
 
 const timeRanges = [
   { label: 'Last 7 days', value: '7', days: 7 },
@@ -35,13 +36,9 @@ const timeRanges = [
 ];
 
 export default function AnalyticsPage() {
+  const { apps } = useAppContext();
   const [timeRange, setTimeRange] = useState('7');
   const [selectedApp, setSelectedApp] = useState('');
-
-  const { data: appsData } = useQuery({
-    queryKey: ['apps'],
-    queryFn: () => getApps({ limit: 100 }),
-  });
 
   // Memoize date range to prevent infinite re-fetches
   // Normalize to day boundaries so dates are stable across renders/remounts
@@ -103,7 +100,7 @@ export default function AnalyticsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Applications</SelectItem>
-              {appsData?.data.map((app) => (
+              {apps.map((app) => (
                 <SelectItem key={app.id} value={app.id}>
                   {app.name}
                 </SelectItem>
