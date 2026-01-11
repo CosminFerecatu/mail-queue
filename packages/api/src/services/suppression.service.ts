@@ -21,7 +21,7 @@ export interface SuppressionEntry {
 }
 
 export interface AddSuppressionOptions {
-  appId: string;
+  appId: string | null;
   emailAddress: string;
   reason: SuppressionReason;
   sourceEmailId?: string;
@@ -29,7 +29,7 @@ export interface AddSuppressionOptions {
 }
 
 export interface ListSuppressionsOptions {
-  appId: string;
+  appId: string | null | undefined;
   limit?: number;
   cursor?: string;
   reason?: SuppressionReason;
@@ -52,11 +52,12 @@ export async function addToSuppressionList(
   const normalizedEmail = emailAddress.toLowerCase().trim();
 
   // Check if already suppressed for this app
-  const [existing] = await db
-    .select()
-    .from(suppressionList)
-    .where(and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail)))
-    .limit(1);
+  const whereClause = and(
+    appId ? eq(suppressionList.appId, appId) : isNull(suppressionList.appId),
+    eq(suppressionList.emailAddress, normalizedEmail)
+  );
+
+  const [existing] = await db.select().from(suppressionList).where(whereClause).limit(1);
 
   if (existing) {
     // Update the existing entry
@@ -87,7 +88,7 @@ export async function addToSuppressionList(
   const [created] = await db
     .insert(suppressionList)
     .values({
-      appId,
+      appId: appId ?? null,
       emailAddress: normalizedEmail,
       reason,
       sourceEmailId: sourceEmailId ?? null,
@@ -112,15 +113,20 @@ export async function addToSuppressionList(
  * Remove an email address from the suppression list
  */
 export async function removeFromSuppressionList(
-  appId: string,
+  appId: string | null,
   emailAddress: string
 ): Promise<boolean> {
   const db = getDatabase();
   const normalizedEmail = emailAddress.toLowerCase().trim();
 
+  const whereClause = and(
+    appId ? eq(suppressionList.appId, appId) : isNull(suppressionList.appId),
+    eq(suppressionList.emailAddress, normalizedEmail)
+  );
+
   const result = await db
     .delete(suppressionList)
-    .where(and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail)))
+    .where(whereClause)
     .returning({ id: suppressionList.id });
 
   if (result.length > 0) {
@@ -176,7 +182,11 @@ export async function listSuppressions(
   const { appId, limit = 50, cursor, reason } = options;
   const db = getDatabase();
 
-  const conditions = [eq(suppressionList.appId, appId)];
+  const conditions = [];
+
+  if (appId !== undefined) {
+    conditions.push(appId ? eq(suppressionList.appId, appId) : isNull(suppressionList.appId));
+  }
 
   if (reason) {
     conditions.push(eq(suppressionList.reason, reason));
@@ -233,7 +243,7 @@ export async function listSuppressions(
  * Bulk add emails to suppression list
  */
 export async function bulkAddToSuppressionList(
-  appId: string,
+  appId: string | null,
   entries: Array<{ emailAddress: string; reason: SuppressionReason }>
 ): Promise<{ added: number; skipped: number }> {
   const db = getDatabase();
@@ -248,7 +258,10 @@ export async function bulkAddToSuppressionList(
       .select({ id: suppressionList.id })
       .from(suppressionList)
       .where(
-        and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
+        and(
+          appId ? eq(suppressionList.appId, appId) : isNull(suppressionList.appId),
+          eq(suppressionList.emailAddress, normalizedEmail)
+        )
       )
       .limit(1);
 
@@ -258,7 +271,7 @@ export async function bulkAddToSuppressionList(
     }
 
     await db.insert(suppressionList).values({
-      appId,
+      appId: appId ?? null,
       emailAddress: normalizedEmail,
       reason: entry.reason,
     });

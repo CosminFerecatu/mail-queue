@@ -34,16 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api } from '@/lib/api';
-
-interface SuppressionEntry {
-  id: string;
-  appId: string | null;
-  emailAddress: string;
-  reason: 'hard_bounce' | 'soft_bounce' | 'complaint' | 'unsubscribe' | 'manual';
-  expiresAt: string | null;
-  createdAt: string;
-}
+import { getSuppressions, addSuppression, deleteSuppression } from '@/lib/api';
 
 const reasonLabels: Record<
   string,
@@ -66,16 +57,13 @@ export default function SuppressionPage() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['suppression'],
-    queryFn: () => api<{ data: SuppressionEntry[] }>('/v1/suppression?limit=100'),
+    queryFn: () => getSuppressions({ limit: 100 }),
   });
 
   const handleAdd = async () => {
-    await api('/v1/suppression', {
-      method: 'POST',
-      body: {
-        emailAddress: formData.email,
-        reason: formData.reason,
-      },
+    await addSuppression({
+      emailAddress: formData.email,
+      reason: formData.reason,
     });
     setIsAddOpen(false);
     setFormData({ email: '', reason: 'manual' });
@@ -83,7 +71,7 @@ export default function SuppressionPage() {
   };
 
   const handleRemove = async (email: string) => {
-    await api(`/v1/suppression/${encodeURIComponent(email)}`, { method: 'DELETE' });
+    await deleteSuppression(email);
     refetch();
   };
 

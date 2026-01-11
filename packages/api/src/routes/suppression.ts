@@ -54,7 +54,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -80,7 +80,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       const { limit, cursor, reason } = queryResult.data;
 
       const result = await listSuppressions({
-        appId: request.appId,
+        appId: request.appId, // undefined for admin (all), string for app
         limit,
         cursor,
         reason,
@@ -100,7 +100,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression/:email',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -123,7 +123,8 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
-      const result = await isEmailSuppressed(request.appId, paramsResult.data.email);
+      // Check specific app or global (if admin, check global only via '')
+      const result = await isEmailSuppressed(request.appId ?? '', paramsResult.data.email);
 
       return {
         success: true,
@@ -140,7 +141,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -170,7 +171,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       const { emailAddress, reason, expiresAt } = bodyResult.data;
 
       const entry = await addToSuppressionList({
-        appId: request.appId,
+        appId: request.appId ?? null, // null for admin (global)
         emailAddress,
         reason,
         expiresAt: expiresAt ? new Date(expiresAt) : undefined,
@@ -193,7 +194,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression/bulk',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -216,7 +217,10 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
-      const result = await bulkAddToSuppressionList(request.appId, bodyResult.data.entries);
+      const result = await bulkAddToSuppressionList(
+        request.appId ?? null, // null for admin (global)
+        bodyResult.data.entries
+      );
 
       return reply.status(201).send({
         success: true,
@@ -230,7 +234,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression/:email',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -253,7 +257,10 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
-      const removed = await removeFromSuppressionList(request.appId, paramsResult.data.email);
+      const removed = await removeFromSuppressionList(
+        request.appId ?? null, // null for admin (global)
+        paramsResult.data.email
+      );
 
       if (!removed) {
         return reply.status(404).send({
@@ -275,7 +282,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression/export',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -303,7 +310,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
 
       while (true) {
         const result = await listSuppressions({
-          appId: request.appId,
+          appId: request.appId, // undefined for admin (all)
           limit: batchSize,
           cursor,
         });
@@ -357,7 +364,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
     '/suppression/import',
     { preHandler: requireScope('suppression:manage') },
     async (request, reply) => {
-      if (!request.appId) {
+      if (!request.appId && !request.isAdmin) {
         return reply.status(401).send({
           success: false,
           error: {
@@ -465,7 +472,10 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
 
       for (let i = 0; i < entries.length; i += batchSize) {
         const batch = entries.slice(i, i + batchSize);
-        const result = await bulkAddToSuppressionList(request.appId, batch);
+        const result = await bulkAddToSuppressionList(
+          request.appId ?? null, // null for admin (global)
+          batch
+        );
         totalAdded += result.added;
         totalSkipped += result.skipped;
       }

@@ -309,6 +309,9 @@ export async function getDeliveryMetrics(
   // Determine the date truncation based on granularity
   const dateTrunc = granularity === 'minute' ? 'minute' : granularity === 'hour' ? 'hour' : 'day';
 
+  // Define the date_trunc expression once and reuse it to ensure PostgreSQL recognizes it as the same expression
+  const dateTruncExpr = sql`date_trunc(${sql.raw(`'${dateTrunc}'`)}, ${emails.createdAt})`;
+
   const conditions: ReturnType<typeof eq>[] = [
     gte(emails.createdAt, from),
     lte(emails.createdAt, to),
@@ -325,14 +328,14 @@ export async function getDeliveryMetrics(
   // Get time-series data
   const timeSeriesData = await db
     .select({
-      timestamp: sql<string>`date_trunc(${dateTrunc}, ${emails.createdAt})::text`,
+      timestamp: sql<string>`${dateTruncExpr}::text`,
       status: emails.status,
       count: count(),
     })
     .from(emails)
     .where(and(...conditions))
-    .groupBy(sql`date_trunc(${dateTrunc}, ${emails.createdAt})`, emails.status)
-    .orderBy(sql`date_trunc(${dateTrunc}, ${emails.createdAt})`);
+    .groupBy(dateTruncExpr, emails.status)
+    .orderBy(dateTruncExpr);
 
   // Aggregate by timestamp
   const dataMap = new Map<string, DeliveryMetricsPoint>();
@@ -413,6 +416,9 @@ export async function getEngagementMetrics(
 
   const dateTrunc = granularity === 'minute' ? 'minute' : granularity === 'hour' ? 'hour' : 'day';
 
+  // Define the date_trunc expression once and reuse it to ensure PostgreSQL recognizes it as the same expression
+  const dateTruncExpr = sql`date_trunc(${sql.raw(`'${dateTrunc}'`)}, ${emailEvents.createdAt})`;
+
   // Base conditions for email events joined with emails
   const eventConditions: ReturnType<typeof eq>[] = [
     gte(emailEvents.createdAt, from),
@@ -430,7 +436,7 @@ export async function getEngagementMetrics(
   // Get engagement events time-series
   const timeSeriesData = await db
     .select({
-      timestamp: sql<string>`date_trunc(${dateTrunc}, ${emailEvents.createdAt})::text`,
+      timestamp: sql<string>`${dateTruncExpr}::text`,
       eventType: emailEvents.eventType,
       count: count(),
     })
@@ -442,8 +448,8 @@ export async function getEngagementMetrics(
         sql`${emailEvents.eventType} IN ('delivered', 'opened', 'clicked', 'unsubscribed')`
       )
     )
-    .groupBy(sql`date_trunc(${dateTrunc}, ${emailEvents.createdAt})`, emailEvents.eventType)
-    .orderBy(sql`date_trunc(${dateTrunc}, ${emailEvents.createdAt})`);
+    .groupBy(dateTruncExpr, emailEvents.eventType)
+    .orderBy(dateTruncExpr);
 
   // Aggregate by timestamp
   const dataMap = new Map<string, EngagementMetricsPoint>();

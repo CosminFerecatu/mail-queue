@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { subDays, format } from 'date-fns';
+import { subDays, format, startOfDay, endOfDay } from 'date-fns';
 import {
   LineChart,
   Line,
@@ -43,9 +43,16 @@ export default function AnalyticsPage() {
     queryFn: () => getApps({ limit: 100 }),
   });
 
-  const days = timeRanges.find((r) => r.value === timeRange)?.days || 7;
-  const from = format(subDays(new Date(), days), 'yyyy-MM-dd');
-  const to = format(new Date(), 'yyyy-MM-dd');
+  // Memoize date range to prevent infinite re-fetches
+  // Normalize to day boundaries so dates are stable across renders/remounts
+  const { from, to } = useMemo(() => {
+    const days = timeRanges.find((r) => r.value === timeRange)?.days || 7;
+    const now = new Date();
+    return {
+      from: startOfDay(subDays(now, days)).toISOString(),
+      to: endOfDay(now).toISOString(),
+    };
+  }, [timeRange]);
 
   const { data: deliveryData, isLoading: isLoadingDelivery } = useQuery({
     queryKey: ['analytics-delivery', selectedApp, from, to],
@@ -116,12 +123,12 @@ export default function AnalyticsPage() {
             <CardContent>
               {isLoadingDelivery ? (
                 <Skeleton className="h-[300px] w-full" />
-              ) : deliveryData && deliveryData.length > 0 ? (
+              ) : deliveryData && deliveryData.data.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={deliveryData}>
+                  <AreaChart data={deliveryData.data}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis
-                      dataKey="date"
+                      dataKey="timestamp"
                       tickFormatter={formatDate}
                       className="text-xs fill-muted-foreground"
                     />
@@ -185,12 +192,12 @@ export default function AnalyticsPage() {
             <CardContent>
               {isLoadingEngagement ? (
                 <Skeleton className="h-[300px] w-full" />
-              ) : engagementData && engagementData.length > 0 ? (
+              ) : engagementData && engagementData.data.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={engagementData}>
+                  <LineChart data={engagementData.data}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis
-                      dataKey="date"
+                      dataKey="timestamp"
                       tickFormatter={formatDate}
                       className="text-xs fill-muted-foreground"
                     />
@@ -206,7 +213,7 @@ export default function AnalyticsPage() {
                     <Legend />
                     <Line
                       type="monotone"
-                      dataKey="opens"
+                      dataKey="opened"
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       dot={false}
@@ -214,7 +221,7 @@ export default function AnalyticsPage() {
                     />
                     <Line
                       type="monotone"
-                      dataKey="clicks"
+                      dataKey="clicked"
                       stroke="hsl(142 76% 36%)"
                       strokeWidth={2}
                       dot={false}
@@ -222,7 +229,7 @@ export default function AnalyticsPage() {
                     />
                     <Line
                       type="monotone"
-                      dataKey="unsubscribes"
+                      dataKey="unsubscribed"
                       stroke="hsl(0 84% 60%)"
                       strokeWidth={2}
                       dot={false}
@@ -251,20 +258,16 @@ export default function AnalyticsPage() {
               ) : deliveryData ? (
                 <div className="text-center">
                   <div className="text-5xl font-bold text-success">
-                    {deliveryData.length > 0
+                    {deliveryData.data.length > 0
                       ? `${(
-                          (deliveryData.reduce((acc, d) => acc + d.delivered, 0) /
-                            Math.max(
-                              deliveryData.reduce((acc, d) => acc + d.sent, 0),
-                              1
-                            )) *
+                          (deliveryData.totals.delivered / Math.max(deliveryData.totals.sent, 1)) *
                             100
                         ).toFixed(1)}%`
                       : '0%'}
                   </div>
                   <div className="text-sm text-muted-foreground mt-2">
-                    {deliveryData.reduce((acc, d) => acc + d.delivered, 0).toLocaleString()} of{' '}
-                    {deliveryData.reduce((acc, d) => acc + d.sent, 0).toLocaleString()} emails
+                    {deliveryData.totals.delivered.toLocaleString()} of{' '}
+                    {deliveryData.totals.sent.toLocaleString()} emails
                   </div>
                 </div>
               ) : null}
@@ -282,19 +285,16 @@ export default function AnalyticsPage() {
               ) : engagementData && deliveryData ? (
                 <div className="text-center">
                   <div className="text-5xl font-bold text-primary">
-                    {deliveryData.length > 0 && engagementData.length > 0
+                    {deliveryData.data.length > 0 && engagementData.data.length > 0
                       ? `${(
-                          (engagementData.reduce((acc, d) => acc + d.opens, 0) /
-                            Math.max(
-                              deliveryData.reduce((acc, d) => acc + d.delivered, 0),
-                              1
-                            )) *
+                          (engagementData.totals.opened /
+                            Math.max(deliveryData.totals.delivered, 1)) *
                             100
                         ).toFixed(1)}%`
                       : '0%'}
                   </div>
                   <div className="text-sm text-muted-foreground mt-2">
-                    {engagementData.reduce((acc, d) => acc + d.opens, 0).toLocaleString()} opens
+                    {engagementData.totals.opened.toLocaleString()} opens
                   </div>
                 </div>
               ) : null}
@@ -312,19 +312,16 @@ export default function AnalyticsPage() {
               ) : engagementData ? (
                 <div className="text-center">
                   <div className="text-5xl font-bold text-success">
-                    {engagementData.length > 0
+                    {engagementData.data.length > 0
                       ? `${(
-                          (engagementData.reduce((acc, d) => acc + d.clicks, 0) /
-                            Math.max(
-                              engagementData.reduce((acc, d) => acc + d.opens, 0),
-                              1
-                            )) *
+                          (engagementData.totals.clicked /
+                            Math.max(engagementData.totals.opened, 1)) *
                             100
                         ).toFixed(1)}%`
                       : '0%'}
                   </div>
                   <div className="text-sm text-muted-foreground mt-2">
-                    {engagementData.reduce((acc, d) => acc + d.clicks, 0).toLocaleString()} clicks
+                    {engagementData.totals.clicked.toLocaleString()} clicks
                   </div>
                 </div>
               ) : null}

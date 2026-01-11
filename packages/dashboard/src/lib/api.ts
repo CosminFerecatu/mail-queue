@@ -237,6 +237,47 @@ export async function cancelEmail(id: string) {
 }
 
 // Analytics
+export interface DeliveryMetrics {
+  period: { from: string; to: string };
+  granularity: 'minute' | 'hour' | 'day';
+  data: {
+    timestamp: string;
+    sent: number;
+    delivered: number;
+    bounced: number;
+    failed: number;
+  }[];
+  totals: {
+    sent: number;
+    delivered: number;
+    bounced: number;
+    failed: number;
+  };
+}
+
+export interface EngagementMetrics {
+  period: { from: string; to: string };
+  granularity: 'minute' | 'hour' | 'day';
+  data: {
+    timestamp: string;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    unsubscribed: number;
+  }[];
+  totals: {
+    delivered: number;
+    opened: number;
+    clicked: number;
+    unsubscribed: number;
+  };
+  rates: {
+    openRate: number;
+    clickRate: number;
+    unsubscribeRate: number;
+  };
+}
+
 export async function getDeliveryStats(params: {
   appId?: string;
   queueId?: string;
@@ -251,7 +292,7 @@ export async function getDeliveryStats(params: {
 
   const response = await api<{
     success: boolean;
-    data: { date: string; sent: number; delivered: number; bounced: number; failed: number }[];
+    data: DeliveryMetrics;
   }>(`/v1/analytics/delivery?${searchParams.toString()}`);
   return response.data;
 }
@@ -270,9 +311,46 @@ export async function getEngagementStats(params: {
 
   const response = await api<{
     success: boolean;
-    data: { date: string; opens: number; clicks: number; unsubscribes: number }[];
+    data: EngagementMetrics;
   }>(`/v1/analytics/engagement?${searchParams.toString()}`);
   return response.data;
+}
+
+// Suppression
+export interface SuppressionEntry {
+  id: string;
+  appId: string | null;
+  emailAddress: string;
+  reason: 'hard_bounce' | 'soft_bounce' | 'complaint' | 'unsubscribe' | 'manual';
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export async function getSuppressions(params: {
+  limit?: number;
+  cursor?: string;
+  reason?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params.limit) searchParams.set('limit', params.limit.toString());
+  if (params.cursor) searchParams.set('cursor', params.cursor);
+  if (params.reason) searchParams.set('reason', params.reason);
+
+  return api<{ data: SuppressionEntry[]; cursor: string | null; hasMore: boolean }>(
+    `/v1/suppression?${searchParams.toString()}`
+  );
+}
+
+export async function addSuppression(data: { emailAddress: string; reason: string }) {
+  const response = await api<{ success: boolean; data: SuppressionEntry }>('/v1/suppression', {
+    method: 'POST',
+    body: data,
+  });
+  return response.data;
+}
+
+export async function deleteSuppression(email: string) {
+  return api<void>(`/v1/suppression/${encodeURIComponent(email)}`, { method: 'DELETE' });
 }
 
 // Types
