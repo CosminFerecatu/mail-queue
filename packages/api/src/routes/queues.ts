@@ -13,6 +13,7 @@ import {
   getQueueStats,
 } from '../services/queue.service.js';
 import { requireAuth } from '../middleware/auth.js';
+import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -32,6 +33,10 @@ const AdminCreateQueueSchema = CreateQueueSchema.extend({
 export async function queueRoutes(app: FastifyInstance): Promise<void> {
   // Create queue
   app.post('/queues', { preHandler: requireAuth }, async (request, reply) => {
+    // Check for idempotent replay
+    const replayed = await handleIdempotentRequest(request, reply, 'POST:/queues');
+    if (replayed) return;
+
     const result = AdminCreateQueueSchema.safeParse(request.body);
 
     if (!result.success) {
@@ -72,7 +77,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
     try {
       const queue = await createQueue(appId, result.data);
 
-      return reply.status(201).send({
+      const responseBody = {
         success: true,
         data: {
           id: queue.id,
@@ -87,7 +92,12 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
           createdAt: queue.createdAt,
           updatedAt: queue.updatedAt,
         },
-      });
+      };
+
+      // Cache response for idempotency
+      await cacheSuccessResponse(request, 201, responseBody, 'POST:/queues');
+
+      return reply.status(201).send(responseBody);
     } catch (error) {
       if (error instanceof Error && error.message.includes('SMTP configuration')) {
         return reply.status(400).send({
@@ -387,9 +397,19 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // Get updated queue to return current state
+    const queue = await getQueueById(
+      paramsResult.data.id,
+      request.isAdmin ? undefined : request.appId
+    );
+
     return {
       success: true,
-      message: 'Queue paused successfully',
+      data: {
+        id: queue?.id,
+        isPaused: true,
+        updatedAt: queue?.updatedAt,
+      },
     };
   });
 
@@ -424,9 +444,19 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // Get updated queue to return current state
+    const queue = await getQueueById(
+      paramsResult.data.id,
+      request.isAdmin ? undefined : request.appId
+    );
+
     return {
       success: true,
-      message: 'Queue resumed successfully',
+      data: {
+        id: queue?.id,
+        isPaused: false,
+        updatedAt: queue?.updatedAt,
+      },
     };
   });
 

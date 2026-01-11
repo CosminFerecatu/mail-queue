@@ -13,6 +13,7 @@ import {
 } from '../services/gdpr.service.js';
 import { requireAdminAuth, requireScope } from '../middleware/auth.js';
 import { logAuditEvent, AuditActions } from '../middleware/audit.js';
+import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 
 const CreateRequestSchema = z.object({
   emailAddress: z.string().email(),
@@ -102,6 +103,10 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
 
   // Create GDPR request
   app.post('/gdpr/requests', { preHandler: requireAdminAuth }, async (request, reply) => {
+    // Check for idempotent replay
+    const replayed = await handleIdempotentRequest(request, reply, 'POST:/gdpr/requests');
+    if (replayed) return;
+
     const bodyResult = CreateRequestSchema.safeParse(request.body);
 
     if (!bodyResult.success) {
@@ -136,7 +141,7 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
       { after: { emailAddress, requestType } }
     );
 
-    return reply.status(201).send({
+    const responseBody = {
       success: true,
       data: {
         id: gdprRequest.id,
@@ -148,7 +153,12 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
         metadata: gdprRequest.metadata,
         createdAt: gdprRequest.createdAt.toISOString(),
       },
-    });
+    };
+
+    // Cache response for idempotency
+    await cacheSuccessResponse(request, 201, responseBody, 'POST:/gdpr/requests');
+
+    return reply.status(201).send(responseBody);
   });
 
   // Get GDPR request by ID

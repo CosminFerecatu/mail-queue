@@ -314,9 +314,16 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Get updated config to return current state
+      const config = await getSmtpConfigById(paramsResult.data.id, request.appId);
+
       return {
         success: true,
-        message: 'SMTP configuration activated',
+        data: {
+          id: config?.id,
+          isActive: true,
+          updatedAt: config?.updatedAt,
+        },
       };
     }
   );
@@ -363,9 +370,16 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Get updated config to return current state
+      const config = await getSmtpConfigById(paramsResult.data.id, request.appId);
+
       return {
         success: true,
-        message: 'SMTP configuration deactivated',
+        data: {
+          id: config?.id,
+          isActive: false,
+          updatedAt: config?.updatedAt,
+        },
       };
     }
   );

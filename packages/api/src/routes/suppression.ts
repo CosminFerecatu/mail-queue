@@ -10,6 +10,7 @@ import {
   type SuppressionReason,
 } from '../services/suppression.service.js';
 import { logAuditEvent, AuditActions } from '../middleware/audit.js';
+import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 
 const SuppressionReasonSchema = z.enum([
   'hard_bounce',
@@ -149,6 +150,10 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
+      // Check for idempotent replay
+      const replayed = await handleIdempotentRequest(request, reply, 'POST:/suppression');
+      if (replayed) return;
+
       const bodyResult = AddSuppressionSchema.safeParse(request.body);
 
       if (!bodyResult.success) {
@@ -171,10 +176,15 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         expiresAt: expiresAt ? new Date(expiresAt) : undefined,
       });
 
-      return reply.status(201).send({
+      const responseBody = {
         success: true,
         data: entry,
-      });
+      };
+
+      // Cache response for idempotency
+      await cacheSuccessResponse(request, 201, responseBody, 'POST:/suppression');
+
+      return reply.status(201).send(responseBody);
     }
   );
 

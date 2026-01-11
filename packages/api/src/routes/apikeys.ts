@@ -11,6 +11,7 @@ import {
 } from '../services/apikey.service.js';
 import { getAppById } from '../services/app.service.js';
 import { requireAdminAuth, requireAuth } from '../middleware/auth.js';
+import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 
 const AppParamsSchema = z.object({
   appId: z.string().uuid(),
@@ -49,6 +50,11 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // Check for idempotent replay
+    const endpoint = `POST:/apps/${paramsResult.data.appId}/api-keys`;
+    const replayed = await handleIdempotentRequest(request, reply, endpoint);
+    if (replayed) return;
+
     const bodyResult = CreateApiKeySchema.safeParse(request.body);
 
     if (!bodyResult.success) {
@@ -80,7 +86,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       appData.sandboxMode
     );
 
-    return reply.status(201).send({
+    const responseBody = {
       success: true,
       data: {
         id: apiKey.id,
@@ -95,7 +101,12 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         createdAt: apiKey.createdAt,
       },
       warning: 'Store this API key securely. It will not be shown again.',
-    });
+    };
+
+    // Cache response for idempotency
+    await cacheSuccessResponse(request, 201, responseBody, endpoint);
+
+    return reply.status(201).send(responseBody);
   });
 
   // List API keys for an app (admin only)
@@ -231,9 +242,16 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Get updated key to return current state
+      const key = await getApiKeyById(paramsResult.data.keyId, paramsResult.data.appId);
+
       return {
         success: true,
-        message: 'API key revoked successfully',
+        data: {
+          id: key?.id,
+          isActive: false,
+          revokedAt: new Date().toISOString(),
+        },
       };
     }
   );

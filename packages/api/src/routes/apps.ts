@@ -10,6 +10,7 @@ import {
   regenerateWebhookSecret,
 } from '../services/app.service.js';
 import { requireAdminAuth } from '../middleware/auth.js';
+import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -30,6 +31,10 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
 
   // Create app
   app.post('/apps', async (request, reply) => {
+    // Check for idempotent replay
+    const replayed = await handleIdempotentRequest(request, reply, 'POST:/apps');
+    if (replayed) return;
+
     const result = CreateAppSchema.safeParse(request.body);
 
     if (!result.success) {
@@ -46,7 +51,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
     try {
       const newApp = await createApp(result.data);
 
-      return reply.status(201).send({
+      const responseBody = {
         success: true,
         data: {
           id: newApp.id,
@@ -61,7 +66,12 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
           createdAt: newApp.createdAt,
           updatedAt: newApp.updatedAt,
         },
-      });
+      };
+
+      // Cache response for idempotency
+      await cacheSuccessResponse(request, 201, responseBody, 'POST:/apps');
+
+      return reply.status(201).send(responseBody);
     } catch (error) {
       request.log.error({ error }, 'Failed to create app');
       throw error;

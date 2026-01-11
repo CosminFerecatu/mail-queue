@@ -324,7 +324,7 @@ export const scheduledJobsRoutes: FastifyPluginAsync = async (app: FastifyInstan
   );
 
   // Validate cron expression endpoint
-  app.post(
+  app.get(
     '/scheduled-jobs/validate-cron',
     { preHandler: requireScope('queue:manage') },
     async (request, reply) => {
@@ -333,30 +333,30 @@ export const scheduledJobsRoutes: FastifyPluginAsync = async (app: FastifyInstan
         timezone: z.string().optional(),
       });
 
-      const bodyResult = schema.safeParse(request.body);
+      const queryResult = schema.safeParse(request.query);
 
-      if (!bodyResult.success) {
+      if (!queryResult.success) {
         return reply.status(400).send({
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Invalid request body',
-            details: bodyResult.error.issues,
+            message: 'Invalid query parameters',
+            details: queryResult.error.issues,
           },
         });
       }
 
       const isValid = validateCronExpression(
-        bodyResult.data.cronExpression,
-        bodyResult.data.timezone ?? 'UTC'
+        queryResult.data.cronExpression,
+        queryResult.data.timezone ?? 'UTC'
       );
 
       return {
         success: true,
         data: {
           valid: isValid,
-          cronExpression: bodyResult.data.cronExpression,
-          timezone: bodyResult.data.timezone ?? 'UTC',
+          cronExpression: queryResult.data.cronExpression,
+          timezone: queryResult.data.timezone ?? 'UTC',
         },
       };
     }
