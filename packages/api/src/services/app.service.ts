@@ -81,12 +81,13 @@ export async function getApps(options: {
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(apps.createdAt, cursorDate),
-        and(eq(apps.createdAt, cursorDate), lt(apps.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(apps.createdAt, cursorDate),
+      and(eq(apps.createdAt, cursorDate), lt(apps.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

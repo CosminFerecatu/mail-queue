@@ -172,12 +172,13 @@ export async function listAuditLogs(options: ListAuditLogsOptions): Promise<Audi
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(auditLogs.createdAt, cursorDate),
-        and(eq(auditLogs.createdAt, cursorDate), lt(auditLogs.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(auditLogs.createdAt, cursorDate),
+      and(eq(auditLogs.createdAt, cursorDate), lt(auditLogs.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

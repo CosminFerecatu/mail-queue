@@ -84,12 +84,13 @@ export async function getApiKeysByAppId(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(apiKeys.createdAt, cursorDate),
-        and(eq(apiKeys.createdAt, cursorDate), lt(apiKeys.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(apiKeys.createdAt, cursorDate),
+      and(eq(apiKeys.createdAt, cursorDate), lt(apiKeys.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   // Fetch limit + 1 to determine if there are more results

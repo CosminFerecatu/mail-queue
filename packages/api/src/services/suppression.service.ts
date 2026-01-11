@@ -186,12 +186,13 @@ export async function listSuppressions(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(suppressionList.createdAt, cursorDate),
-        and(eq(suppressionList.createdAt, cursorDate), lt(suppressionList.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(suppressionList.createdAt, cursorDate),
+      and(eq(suppressionList.createdAt, cursorDate), lt(suppressionList.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = and(...conditions);

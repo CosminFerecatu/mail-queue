@@ -89,12 +89,13 @@ export async function getQueuesByAppId(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(queues.createdAt, cursorDate),
-        and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(queues.createdAt, cursorDate),
+      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   // Fetch limit + 1 to determine if there are more results
@@ -131,12 +132,13 @@ export async function getAllQueues(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(queues.createdAt, cursorDate),
-        and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(queues.createdAt, cursorDate),
+      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

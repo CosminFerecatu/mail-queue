@@ -214,12 +214,13 @@ export async function listScheduledJobs(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(scheduledJobs.createdAt, cursorDate),
-        and(eq(scheduledJobs.createdAt, cursorDate), lt(scheduledJobs.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(scheduledJobs.createdAt, cursorDate),
+      and(eq(scheduledJobs.createdAt, cursorDate), lt(scheduledJobs.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = and(...conditions);

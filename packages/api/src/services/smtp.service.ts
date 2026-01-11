@@ -80,12 +80,13 @@ export async function getSmtpConfigsByAppId(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(smtpConfigs.createdAt, cursorDate),
-        and(eq(smtpConfigs.createdAt, cursorDate), lt(smtpConfigs.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(smtpConfigs.createdAt, cursorDate),
+      and(eq(smtpConfigs.createdAt, cursorDate), lt(smtpConfigs.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   // Fetch limit + 1 to determine if there are more results

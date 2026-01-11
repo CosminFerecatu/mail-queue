@@ -212,12 +212,13 @@ export async function getWebhookDeliveries(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(webhookDeliveries.createdAt, cursorDate),
-        and(eq(webhookDeliveries.createdAt, cursorDate), lt(webhookDeliveries.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(webhookDeliveries.createdAt, cursorDate),
+      and(eq(webhookDeliveries.createdAt, cursorDate), lt(webhookDeliveries.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = and(...conditions);

@@ -368,12 +368,13 @@ export async function getEmailsByAppId(
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
     // For descending order: get items where (createdAt < cursorCreatedAt) OR (createdAt = cursorCreatedAt AND id < cursorId)
-    conditions.push(
-      or(
-        lt(emails.createdAt, cursorDate),
-        and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(emails.createdAt, cursorDate),
+      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = and(...conditions);
@@ -458,12 +459,13 @@ export async function getAllEmails(options: GetEmailsOptions = {}): Promise<Emai
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(emails.createdAt, cursorDate),
-        and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(emails.createdAt, cursorDate),
+      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

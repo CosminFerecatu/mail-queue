@@ -195,12 +195,13 @@ export async function listGdprRequests(
   const cursorData = parseCursor(cursor);
   if (cursorData) {
     const cursorDate = new Date(cursorData.c);
-    conditions.push(
-      or(
-        lt(gdprRequests.createdAt, cursorDate),
-        and(eq(gdprRequests.createdAt, cursorDate), lt(gdprRequests.id, cursorData.i))
-      )!
+    const paginationCondition = or(
+      lt(gdprRequests.createdAt, cursorDate),
+      and(eq(gdprRequests.createdAt, cursorDate), lt(gdprRequests.id, cursorData.i))
     );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
