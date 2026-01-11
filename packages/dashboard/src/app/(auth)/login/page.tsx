@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Loader2 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login as legacyLogin } from '@/lib/api';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
@@ -177,5 +177,34 @@ export default function LoginPage() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function LoginFormFallback() {
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader className="space-y-1 text-center">
+        <div className="flex justify-center mb-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary">
+            <Mail className="h-6 w-6 text-primary-foreground" />
+          </div>
+        </div>
+        <CardTitle className="text-2xl font-bold">Mail Queue</CardTitle>
+        <CardDescription>Sign in to your account to continue</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFormFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

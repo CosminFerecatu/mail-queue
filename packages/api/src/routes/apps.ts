@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { CreateAppSchema, UpdateAppSchema } from '@mail-queue/core';
 import {
@@ -17,6 +17,57 @@ import { canCreateApp } from '../services/account.service.js';
 const ParamsSchema = z.object({
   id: z.string().uuid(),
 });
+
+// Helper to verify app ownership for SaaS users
+async function verifyAppOwnership(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  appId: string
+): Promise<{ app: Awaited<ReturnType<typeof getAppById>>; authorized: boolean }> {
+  const appData = await getAppById(appId);
+
+  if (!appData) {
+    reply.status(404).send({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'App not found',
+      },
+    });
+    return { app: null, authorized: false };
+  }
+
+  // System admin can access any app
+  if (request.isAdmin) {
+    return { app: appData, authorized: true };
+  }
+
+  // SaaS users must own the app through their account
+  const accountId = request.accountId;
+  if (accountId) {
+    if (appData.accountId !== accountId) {
+      reply.status(403).send({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this app',
+        },
+      });
+      return { app: appData, authorized: false };
+    }
+    return { app: appData, authorized: true };
+  }
+
+  // No accountId and not admin - unauthorized
+  reply.status(401).send({
+    success: false,
+    error: {
+      code: 'UNAUTHORIZED',
+      message: 'Authentication required',
+    },
+  });
+  return { app: appData, authorized: false };
+}
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -178,32 +229,28 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const appData = await getAppById(paramsResult.data.id);
-
-    if (!appData) {
-      return reply.status(404).send({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'App not found',
-        },
-      });
-    }
+    // Verify ownership for SaaS users
+    const { app: appData, authorized } = await verifyAppOwnership(
+      request,
+      reply,
+      paramsResult.data.id
+    );
+    if (!authorized) return;
 
     return {
       success: true,
       data: {
-        id: appData.id,
-        name: appData.name,
-        description: appData.description,
-        isActive: appData.isActive,
-        sandboxMode: appData.sandboxMode,
-        webhookUrl: appData.webhookUrl,
-        dailyLimit: appData.dailyLimit,
-        monthlyLimit: appData.monthlyLimit,
-        settings: appData.settings,
-        createdAt: appData.createdAt,
-        updatedAt: appData.updatedAt,
+        id: appData?.id,
+        name: appData?.name,
+        description: appData?.description,
+        isActive: appData?.isActive,
+        sandboxMode: appData?.sandboxMode,
+        webhookUrl: appData?.webhookUrl,
+        dailyLimit: appData?.dailyLimit,
+        monthlyLimit: appData?.monthlyLimit,
+        settings: appData?.settings,
+        createdAt: appData?.createdAt,
+        updatedAt: appData?.updatedAt,
       },
     };
   });
@@ -222,6 +269,10 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
         },
       });
     }
+
+    // Verify ownership for SaaS users
+    const { authorized } = await verifyAppOwnership(request, reply, paramsResult.data.id);
+    if (!authorized) return;
 
     const bodyResult = UpdateAppSchema.safeParse(request.body);
 
@@ -281,6 +332,10 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // Verify ownership for SaaS users
+    const { authorized } = await verifyAppOwnership(request, reply, paramsResult.data.id);
+    if (!authorized) return;
+
     const deleted = await deleteApp(paramsResult.data.id);
 
     if (!deleted) {
@@ -311,6 +366,10 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
         },
       });
     }
+
+    // Verify ownership for SaaS users
+    const { authorized } = await verifyAppOwnership(request, reply, paramsResult.data.id);
+    if (!authorized) return;
 
     const result = await regenerateWebhookSecret(paramsResult.data.id);
 

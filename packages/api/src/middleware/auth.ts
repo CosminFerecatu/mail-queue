@@ -117,13 +117,12 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
     request.userId = payload.sub;
 
     // Handle SaaS tokens (have accountId and accountRole)
+    // NOTE: SaaS users should NOT get isAdmin - they are scoped to their account
     if (payload.accountId) {
       request.accountId = payload.accountId;
       request.accountRole = payload.accountRole;
-      // SaaS owners/admins get admin-level access
-      if (payload.accountRole === 'owner' || payload.accountRole === 'admin') {
-        request.isAdmin = true;
-      }
+      // SaaS users are authenticated but NOT system admins
+      // Routes must check accountId + accountRole for authorization
     }
 
     // Handle legacy admin tokens (have role)
@@ -252,12 +251,10 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
     request.userId = payload.sub;
 
     // Handle SaaS tokens (have accountId and accountRole)
+    // NOTE: SaaS users should NOT get isAdmin - they are scoped to their account
     if (payload.accountId) {
       request.accountId = payload.accountId;
       request.accountRole = payload.accountRole;
-      if (payload.accountRole === 'owner' || payload.accountRole === 'admin') {
-        request.isAdmin = true;
-      }
     }
 
     // Handle legacy admin tokens (have role)

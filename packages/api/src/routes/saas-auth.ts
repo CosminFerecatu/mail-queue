@@ -13,7 +13,12 @@ import {
 import { config } from '../config.js';
 
 // Generate JWT token for SaaS user
-function generateSaaSToken(userId: string, email: string, accountId?: string, accountRole?: string): string {
+function generateSaaSToken(
+  userId: string,
+  email: string,
+  accountId?: string,
+  accountRole?: string
+): string {
   return jwt.sign(
     {
       sub: userId,

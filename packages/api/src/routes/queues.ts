@@ -5,6 +5,7 @@ import {
   createQueue,
   getQueueById,
   getQueuesByAppId,
+  getQueuesByAccountId,
   getAllQueues,
   updateQueue,
   deleteQueue,
@@ -175,9 +176,35 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
     const { limit, cursor, appId: queryAppId } = queryResult.data;
     const appId = request.appId || queryAppId;
+    const accountId = request.accountId;
 
-    // Non-admin users must have an appId
-    if (!request.isAdmin && !appId) {
+    // SaaS users get queues from their account's apps
+    if (accountId && !appId) {
+      const result = await getQueuesByAccountId(accountId, { limit, cursor });
+
+      return {
+        success: true,
+        data: result.queues.map((q) => ({
+          id: q.id,
+          appId: q.appId,
+          name: q.name,
+          priority: q.priority,
+          rateLimit: q.rateLimit,
+          maxRetries: q.maxRetries,
+          retryDelay: q.retryDelay,
+          smtpConfigId: q.smtpConfigId,
+          isPaused: q.isPaused,
+          settings: q.settings,
+          createdAt: q.createdAt,
+          updatedAt: q.updatedAt,
+        })),
+        cursor: result.cursor,
+        hasMore: result.hasMore,
+      };
+    }
+
+    // Non-admin, non-SaaS users must have an appId
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -187,8 +214,8 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    // Admin without appId gets all queues
-    if (request.isAdmin && !appId) {
+    // System admin without appId gets all queues
+    if (request.isAdmin && !accountId && !appId) {
       const result = await getAllQueues({ limit, cursor });
 
       return {
@@ -212,6 +239,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       };
     }
 
+    // Filter by specific appId
     const result = await getQueuesByAppId(appId || '', { limit, cursor });
 
     return {

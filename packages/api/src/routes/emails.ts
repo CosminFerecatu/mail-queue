@@ -6,6 +6,7 @@ import {
   createBatchEmails,
   getEmailById,
   getEmailsByAppId,
+  getEmailsByAccountId,
   getAllEmails,
   getEmailEvents,
   cancelScheduledEmail,
@@ -243,9 +244,27 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     const { limit, cursor, status, queueId, appId: queryAppId } = queryResult.data;
     const appId = request.appId || queryAppId;
+    const accountId = request.accountId;
 
-    // Non-admin users must have an appId
-    if (!request.isAdmin && !appId) {
+    // SaaS users get emails from their account's apps
+    if (accountId && !appId) {
+      const result = await getEmailsByAccountId(accountId, {
+        limit,
+        cursor,
+        status,
+        queueId,
+      });
+
+      return {
+        success: true,
+        data: result.emails,
+        cursor: result.cursor,
+        hasMore: result.hasMore,
+      };
+    }
+
+    // Non-admin, non-SaaS users must have an appId
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -255,8 +274,8 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       });
     }
 
-    // Admin without appId gets all emails
-    if (request.isAdmin && !appId) {
+    // System admin without appId gets all emails
+    if (request.isAdmin && !accountId && !appId) {
       const result = await getAllEmails({
         limit,
         cursor,
@@ -272,6 +291,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       };
     }
 
+    // Filter by specific appId
     const result = await getEmailsByAppId(appId || '', {
       limit,
       cursor,

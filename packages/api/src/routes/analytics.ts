@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   getAnalyticsOverview,
@@ -9,6 +9,36 @@ import {
   getGlobalAnalyticsOverview,
 } from '../services/analytics.service.js';
 import { requireAuth } from '../middleware/auth.js';
+import { getAppById, getAppsByAccountId } from '../services/app.service.js';
+
+// Helper to verify SaaS user owns the app they're querying
+async function verifyAppAccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  appId: string
+): Promise<boolean> {
+  // System admin can access any app
+  if (request.isAdmin) return true;
+
+  // SaaS users must own the app through their account
+  const accountId = request.accountId;
+  if (accountId) {
+    const app = await getAppById(appId);
+    if (!app || app.accountId !== accountId) {
+      reply.status(403).send({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this app',
+        },
+      });
+      return false;
+    }
+    return true;
+  }
+
+  return true; // API key users already have appId set
+}
 
 // Default time range: last 24 hours
 function getDefaultTimeRange(): { from: Date; to: Date } {
@@ -43,12 +73,43 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     const { from, to, queueId, appId: queryAppId } = queryResult.data;
     const defaultRange = getDefaultTimeRange();
+    const accountId = request.accountId;
 
-    // Determine appId: from API key, query param (for admins), or null for global
-    const appId = request.appId || queryAppId;
+    // Determine appId: from API key, query param, or first account app for SaaS users
+    let appId = request.appId || queryAppId;
 
-    // If not admin and no appId, require app authentication
-    if (!request.isAdmin && !appId) {
+    // If SaaS user with queryAppId, verify they own that app
+    if (accountId && queryAppId) {
+      const hasAccess = await verifyAppAccess(request, reply, queryAppId);
+      if (!hasAccess) return;
+    }
+
+    // SaaS user without appId - use their first app
+    if (accountId && !appId) {
+      const accountApps = await getAppsByAccountId(accountId);
+      if (accountApps.length > 0) {
+        appId = accountApps[0]?.id;
+      } else {
+        return reply.send({
+          success: true,
+          data: {
+            totalEmailsToday: 0,
+            totalEmailsMonth: 0,
+            deliveryRate: 0,
+            bounceRate: 0,
+            openRate: 0,
+            clickRate: 0,
+            activeApps: 0,
+            activeQueues: 0,
+            pendingEmails: 0,
+            processingEmails: 0,
+          },
+        });
+      }
+    }
+
+    // Non-admin, non-SaaS users must have an appId
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -58,8 +119,8 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       });
     }
 
-    // Admin without appId gets global overview
-    if (request.isAdmin && !appId) {
+    // System admin without appId gets global overview
+    if (request.isAdmin && !accountId && !appId) {
       const overview = await getGlobalAnalyticsOverview({
         from: from ? new Date(from) : defaultRange.from,
         to: to ? new Date(to) : defaultRange.to,
@@ -101,9 +162,24 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     const { from, to, queueId, granularity, appId: queryAppId } = queryResult.data;
     const defaultRange = getDefaultTimeRange();
-    const appId = request.appId || queryAppId;
+    const accountId = request.accountId;
+    let appId = request.appId || queryAppId;
 
-    if (!request.isAdmin && !appId) {
+    // If SaaS user with queryAppId, verify they own that app
+    if (accountId && queryAppId) {
+      const hasAccess = await verifyAppAccess(request, reply, queryAppId);
+      if (!hasAccess) return;
+    }
+
+    // SaaS user without appId - use their first app
+    if (accountId && !appId) {
+      const accountApps = await getAppsByAccountId(accountId);
+      if (accountApps.length > 0) {
+        appId = accountApps[0]?.id;
+      }
+    }
+
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -144,9 +220,24 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     const { from, to, queueId, granularity, appId: queryAppId } = queryResult.data;
     const defaultRange = getDefaultTimeRange();
-    const appId = request.appId || queryAppId;
+    const accountId = request.accountId;
+    let appId = request.appId || queryAppId;
 
-    if (!request.isAdmin && !appId) {
+    // If SaaS user with queryAppId, verify they own that app
+    if (accountId && queryAppId) {
+      const hasAccess = await verifyAppAccess(request, reply, queryAppId);
+      if (!hasAccess) return;
+    }
+
+    // SaaS user without appId - use their first app
+    if (accountId && !appId) {
+      const accountApps = await getAppsByAccountId(accountId);
+      if (accountApps.length > 0) {
+        appId = accountApps[0]?.id;
+      }
+    }
+
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -187,9 +278,24 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     const { from, to, queueId, appId: queryAppId } = queryResult.data;
     const defaultRange = getDefaultTimeRange();
-    const appId = request.appId || queryAppId;
+    const accountId = request.accountId;
+    let appId = request.appId || queryAppId;
 
-    if (!request.isAdmin && !appId) {
+    // If SaaS user with queryAppId, verify they own that app
+    if (accountId && queryAppId) {
+      const hasAccess = await verifyAppAccess(request, reply, queryAppId);
+      if (!hasAccess) return;
+    }
+
+    // SaaS user without appId - use their first app
+    if (accountId && !appId) {
+      const accountApps = await getAppsByAccountId(accountId);
+      if (accountApps.length > 0) {
+        appId = accountApps[0]?.id;
+      }
+    }
+
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -215,9 +321,25 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   // Get reputation score
   app.get('/analytics/reputation', { preHandler: requireAuth }, async (request, reply) => {
     const queryResult = z.object({ appId: z.string().uuid().optional() }).safeParse(request.query);
-    const appId = request.appId || queryResult.data?.appId;
+    const queryAppId = queryResult.data?.appId;
+    const accountId = request.accountId;
+    let appId = request.appId || queryAppId;
 
-    if (!request.isAdmin && !appId) {
+    // If SaaS user with queryAppId, verify they own that app
+    if (accountId && queryAppId) {
+      const hasAccess = await verifyAppAccess(request, reply, queryAppId);
+      if (!hasAccess) return;
+    }
+
+    // SaaS user without appId - use their first app
+    if (accountId && !appId) {
+      const accountApps = await getAppsByAccountId(accountId);
+      if (accountApps.length > 0) {
+        appId = accountApps[0]?.id;
+      }
+    }
+
+    if (!request.isAdmin && !accountId && !appId) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -227,7 +349,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       });
     }
 
-    // Return null reputation for global view
+    // Return null reputation for global view (system admin only)
     if (!appId) {
       return reply.send({
         success: true,

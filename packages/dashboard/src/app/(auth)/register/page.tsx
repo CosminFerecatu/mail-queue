@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Mail, Loader2 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const searchParams = useSearchParams();
   const plan = searchParams.get('plan') || 'free';
 
@@ -235,5 +235,33 @@ export default function RegisterPage() {
         .
       </p>
     </div>
+  );
+}
+
+function RegisterFormFallback() {
+  return (
+    <div className="w-full max-w-md">
+      <div className="flex items-center justify-center gap-2 mb-6">
+        <Mail className="h-8 w-8 text-primary" />
+        <span className="text-2xl font-bold">Mail Queue</span>
+      </div>
+      <div className="bg-card border rounded-lg p-8 shadow-sm">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold">Create your account</h1>
+          <p className="text-muted-foreground mt-2">Loading...</p>
+        </div>
+        <div className="flex justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<RegisterFormFallback />}>
+      <RegisterForm />
+    </Suspense>
   );
 }

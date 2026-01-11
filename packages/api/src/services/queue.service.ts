@@ -1,5 +1,5 @@
-import { eq, and, desc, lt, or, sql } from 'drizzle-orm';
-import { getDatabase, queues, smtpConfigs, emails, type QueueRow } from '@mail-queue/db';
+import { eq, and, desc, lt, or, sql, inArray } from 'drizzle-orm';
+import { getDatabase, queues, smtpConfigs, emails, apps, type QueueRow } from '@mail-queue/db';
 import type { CreateQueueInput, UpdateQueueInput } from '@mail-queue/core';
 import { getEmailQueue } from '../lib/queue.js';
 import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
@@ -148,6 +148,62 @@ export async function getAllQueues(
     .select()
     .from(queues)
     .where(whereClause)
+    .orderBy(desc(queues.createdAt), desc(queues.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    queueList,
+    limit,
+    (q) => q.createdAt,
+    (q) => q.id
+  );
+
+  return {
+    queues: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
+  };
+}
+
+export async function getQueuesByAccountId(
+  accountId: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<QueueListResult> {
+  const db = getDatabase();
+  const { limit = 50, cursor } = options;
+
+  // First get all app IDs belonging to this account
+  const accountApps = await db
+    .select({ id: apps.id })
+    .from(apps)
+    .where(eq(apps.accountId, accountId));
+
+  const appIds = accountApps.map((a) => a.id);
+
+  if (appIds.length === 0) {
+    return { queues: [], cursor: null, hasMore: false };
+  }
+
+  const conditions: ReturnType<typeof eq>[] = [inArray(queues.appId, appIds)];
+
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    const paginationCondition = or(
+      lt(queues.createdAt, cursorDate),
+      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
+    );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
+  }
+
+  // Fetch limit + 1 to determine if there are more results
+  const queueList = await db
+    .select()
+    .from(queues)
+    .where(and(...conditions))
     .orderBy(desc(queues.createdAt), desc(queues.id))
     .limit(limit + 1);
 

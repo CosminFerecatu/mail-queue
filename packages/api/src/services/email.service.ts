@@ -1,5 +1,5 @@
-import { eq, and, desc, lt, or } from 'drizzle-orm';
-import { getDatabase, emails, queues, emailEvents, suppressionList } from '@mail-queue/db';
+import { eq, and, desc, lt, or, inArray } from 'drizzle-orm';
+import { getDatabase, emails, queues, emailEvents, suppressionList, apps } from '@mail-queue/db';
 import {
   type CreateEmailInput,
   type CreateBatchEmailInput,
@@ -469,6 +469,112 @@ export async function getAllEmails(options: GetEmailsOptions = {}): Promise<Emai
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Fetch limit + 1 to determine if there are more results
+  const emailList = await db
+    .select({
+      id: emails.id,
+      appId: emails.appId,
+      queueId: emails.queueId,
+      queueName: queues.name,
+      messageId: emails.messageId,
+      fromAddress: emails.fromAddress,
+      fromName: emails.fromName,
+      toAddresses: emails.toAddresses,
+      subject: emails.subject,
+      status: emails.status,
+      retryCount: emails.retryCount,
+      lastError: emails.lastError,
+      scheduledAt: emails.scheduledAt,
+      sentAt: emails.sentAt,
+      deliveredAt: emails.deliveredAt,
+      createdAt: emails.createdAt,
+      metadata: emails.metadata,
+    })
+    .from(emails)
+    .innerJoin(queues, eq(emails.queueId, queues.id))
+    .where(whereClause)
+    .orderBy(desc(emails.createdAt), desc(emails.id))
+    .limit(limit + 1);
+
+  const mappedEmails = emailList.map((email) => ({
+    id: email.id,
+    queueId: email.queueId,
+    queueName: email.queueName,
+    messageId: email.messageId,
+    from: {
+      email: email.fromAddress,
+      name: email.fromName ?? undefined,
+    },
+    to: email.toAddresses,
+    subject: email.subject,
+    status: email.status,
+    retryCount: email.retryCount,
+    lastError: email.lastError,
+    scheduledAt: email.scheduledAt,
+    sentAt: email.sentAt,
+    deliveredAt: email.deliveredAt,
+    createdAt: email.createdAt,
+    metadata: email.metadata,
+  }));
+
+  const result = buildPaginationResult(
+    mappedEmails,
+    limit,
+    (e) => e.createdAt,
+    (e) => e.id
+  );
+
+  return {
+    emails: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
+  };
+}
+
+export async function getEmailsByAccountId(
+  accountId: string,
+  options: GetEmailsOptions = {}
+): Promise<EmailListResult> {
+  const db = getDatabase();
+  const { limit = 50, cursor, status, queueId } = options;
+
+  // First get all app IDs belonging to this account
+  const accountApps = await db
+    .select({ id: apps.id })
+    .from(apps)
+    .where(eq(apps.accountId, accountId));
+
+  const appIds = accountApps.map((a) => a.id);
+
+  if (appIds.length === 0) {
+    return { emails: [], cursor: null, hasMore: false };
+  }
+
+  const conditions: ReturnType<typeof eq>[] = [inArray(emails.appId, appIds)];
+
+  if (status) {
+    conditions.push(eq(emails.status, status));
+  }
+
+  if (queueId) {
+    conditions.push(eq(emails.queueId, queueId));
+  }
+
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    const paginationCondition = or(
+      lt(emails.createdAt, cursorDate),
+      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
+    );
+    if (paginationCondition) {
+      conditions.push(paginationCondition);
+    }
+  }
+
+  const whereClause = and(...conditions);
 
   // Fetch limit + 1 to determine if there are more results
   const emailList = await db
