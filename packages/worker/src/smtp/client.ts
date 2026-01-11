@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import type { Transporter, SentMessageInfo } from 'nodemailer';
 import type { SmtpConfigRow } from '@mail-queue/db';
@@ -64,8 +65,16 @@ function createTransporter(smtpConfig: SmtpClientConfig): Transporter<SentMessag
   return nodemailer.createTransport(options);
 }
 
+/**
+ * Generate a pool key for SMTP connection pooling
+ *
+ * Uses a hash of the connection parameters to avoid exposing
+ * usernames in logs while still providing unique keys per config.
+ */
 function getPoolKey(smtpConfig: SmtpClientConfig): string {
-  return `${smtpConfig.host}:${smtpConfig.port}:${smtpConfig.user ?? 'anonymous'}`;
+  const keyData = `${smtpConfig.host}:${smtpConfig.port}:${smtpConfig.user ?? 'anonymous'}`;
+  const hash = createHash('sha256').update(keyData).digest('hex').substring(0, 16);
+  return `smtp-${smtpConfig.host}:${smtpConfig.port}-${hash}`;
 }
 
 async function getConnection(smtpConfig: SmtpClientConfig): Promise<SmtpConnection> {

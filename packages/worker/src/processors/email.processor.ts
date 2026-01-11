@@ -25,6 +25,7 @@ import {
   recordEmailRetry,
   recordSmtpError,
 } from '../lib/metrics.js';
+import { sanitizeErrorMessage } from '../lib/privacy.js';
 
 const encryptionKey = parseEncryptionKey(config.encryptionKey);
 
@@ -324,12 +325,15 @@ export async function processEmailJob(job: Job<SendEmailJobData>): Promise<void>
       error instanceof SmtpError ? 'smtp_error' : 'unknown'
     );
 
+    // Sanitize error message before storing to remove sensitive details
+    const sanitizedError = sanitizeErrorMessage(errorMessage);
+
     // Update email status
     await db
       .update(emails)
       .set({
         status: isFinalAttempt ? 'failed' : 'queued',
-        lastError: errorMessage,
+        lastError: sanitizedError,
         retryCount: email.retryCount + 1,
       })
       .where(eq(emails.id, emailId));

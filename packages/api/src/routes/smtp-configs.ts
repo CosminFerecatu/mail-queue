@@ -19,7 +19,7 @@ const ParamsSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
 });
 
 export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
@@ -95,19 +95,15 @@ export async function smtpConfigRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { limit, offset } = queryResult.data;
+      const { limit, cursor } = queryResult.data;
 
-      const { configs, total } = await getSmtpConfigsByAppId(request.appId, { limit, offset });
+      const result = await getSmtpConfigsByAppId(request.appId, { limit, cursor });
 
       return {
         success: true,
-        data: configs.map(formatSmtpConfigResponse),
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + configs.length < total,
-        },
+        data: result.configs.map(formatSmtpConfigResponse),
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       };
     }
   );

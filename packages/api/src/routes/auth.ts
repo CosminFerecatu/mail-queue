@@ -19,8 +19,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const body = loginSchema.safeParse(request.body);
     if (!body.success) {
       return reply.status(400).send({
-        error: 'Validation failed',
-        details: body.error.issues,
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: body.error.issues,
+        },
       });
     }
 
@@ -30,17 +34,35 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const [user] = await getDatabase().select().from(users).where(eq(users.email, email)).limit(1);
 
     if (!user) {
-      return reply.status(401).send({ error: 'Invalid email or password' });
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Invalid email or password',
+        },
+      });
     }
 
     if (!user.isActive) {
-      return reply.status(401).send({ error: 'Account is disabled' });
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'ACCOUNT_DISABLED',
+          message: 'Account is disabled',
+        },
+      });
     }
 
     // Verify password
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
-      return reply.status(401).send({ error: 'Invalid email or password' });
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Invalid email or password',
+        },
+      });
     }
 
     // Update last login
@@ -58,12 +80,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     return {
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
       },
     };
   });
@@ -72,7 +97,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/me', async (request, reply) => {
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      return reply.status(401).send({ error: 'Missing authorization header' });
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Missing authorization header',
+        },
+      });
     }
 
     const token = authHeader.substring(7);
@@ -97,12 +128,32 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1);
 
       if (!user || !user.isActive) {
-        return reply.status(401).send({ error: 'User not found or inactive' });
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'User not found or inactive',
+          },
+        });
       }
 
-      return user;
+      return {
+        success: true,
+        data: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      };
     } catch {
-      return reply.status(401).send({ error: 'Invalid or expired token' });
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: 'INVALID_TOKEN',
+          message: 'Invalid or expired token',
+        },
+      });
     }
   });
 };

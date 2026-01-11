@@ -13,7 +13,7 @@ const ParamsSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   status: z.enum(['pending', 'delivered', 'failed']).optional(),
   emailId: z.string().uuid().optional(),
 });
@@ -47,25 +47,21 @@ export const webhooksRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         });
       }
 
-      const { limit, offset, status, emailId } = queryResult.data;
+      const { limit, cursor, status, emailId } = queryResult.data;
 
       const result = await getWebhookDeliveries({
         appId: request.appId,
         status,
         emailId,
         limit,
-        offset,
+        cursor,
       });
 
       return reply.send({
         success: true,
         data: result.deliveries,
-        pagination: {
-          total: result.total,
-          limit,
-          offset,
-          hasMore: offset + result.deliveries.length < result.total,
-        },
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       });
     }
   );

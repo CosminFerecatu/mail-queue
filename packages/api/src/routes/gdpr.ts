@@ -29,7 +29,7 @@ const CreateRequestSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   emailAddress: z.string().email().optional(),
   requestType: z.enum(['export', 'delete', 'rectify', 'access']).optional(),
   status: z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled']).optional(),
@@ -68,7 +68,7 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset, emailAddress, requestType, status } = queryResult.data;
+    const { limit, cursor, emailAddress, requestType, status } = queryResult.data;
 
     const result = await listGdprRequests({
       appId: request.appId, // Will be null for admin, scoped for app
@@ -76,7 +76,7 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
       requestType: requestType as GdprRequestType | undefined,
       status: status as GdprRequestStatus | undefined,
       limit,
-      offset,
+      cursor,
     });
 
     return {
@@ -95,12 +95,8 @@ export async function gdprRoutes(app: FastifyInstance): Promise<void> {
         createdAt: req.createdAt.toISOString(),
         updatedAt: req.updatedAt.toISOString(),
       })),
-      pagination: {
-        total: result.total,
-        limit,
-        offset,
-        hasMore: result.hasMore,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 

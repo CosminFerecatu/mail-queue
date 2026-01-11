@@ -17,7 +17,7 @@ const ParamsSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   isActive: z
     .enum(['true', 'false'])
     .optional()
@@ -83,13 +83,13 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset, isActive } = queryResult.data;
+    const { limit, cursor, isActive } = queryResult.data;
 
-    const { apps: appList, total } = await getApps({ limit, offset, isActive });
+    const result = await getApps({ limit, cursor, isActive });
 
     return {
       success: true,
-      data: appList.map((a) => ({
+      data: result.apps.map((a) => ({
         id: a.id,
         name: a.name,
         description: a.description,
@@ -102,12 +102,8 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
       })),
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + appList.length < total,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 

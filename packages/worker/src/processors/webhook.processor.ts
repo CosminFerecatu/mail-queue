@@ -1,14 +1,16 @@
-import type { Job } from 'bullmq';
-import { eq } from 'drizzle-orm';
-import { getDatabase, webhookDeliveries } from '@mail-queue/db';
+import { createHmac } from 'node:crypto';
 import {
   type DeliverWebhookJobData,
+  WEBHOOK_ID_HEADER,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
-  WEBHOOK_ID_HEADER,
 } from '@mail-queue/core';
-import { createHmac } from 'node:crypto';
+import { getDatabase, webhookDeliveries } from '@mail-queue/db';
+import type { Job } from 'bullmq';
+import { eq } from 'drizzle-orm';
 import { logger } from '../lib/logger.js';
+import { sanitizeErrorMessage } from '../lib/privacy.js';
+import { validateWebhookUrl } from '../lib/ssrf-protection.js';
 
 // Retry delays in milliseconds (exponential backoff)
 const RETRY_DELAYS = [
@@ -75,7 +77,33 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
 
   if (signature) {
     headers[WEBHOOK_SIGNATURE_HEADER] = signature;
+  } else {
+    // Warn about unsigned webhooks - these are less secure
+    jobLogger.warn(
+      'Delivering webhook without signature - consider configuring a webhook secret for security'
+    );
   }
+
+  // Validate webhook URL for SSRF protection
+  const urlValidation = await validateWebhookUrl(webhookUrl);
+  if (!urlValidation.valid) {
+    jobLogger.error({ error: urlValidation.error }, 'Webhook URL blocked by SSRF protection');
+
+    // Mark as permanently failed - don't retry since URL is invalid
+    await db
+      .update(webhookDeliveries)
+      .set({
+        status: 'failed',
+        attempts: attempt,
+        lastError: `SSRF protection: ${urlValidation.error}`,
+        nextRetryAt: null,
+      })
+      .where(eq(webhookDeliveries.id, webhookDeliveryId));
+
+    return; // Don't throw - this is a permanent failure, not a retryable error
+  }
+
+  jobLogger.debug({ resolvedIps: urlValidation.resolvedIps }, 'Webhook URL validated');
 
   try {
     // Make the HTTP request with timeout
@@ -87,9 +115,17 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
       headers,
       body: payloadStr,
       signal: controller.signal,
+      redirect: 'manual', // Don't follow redirects - prevent redirect-based SSRF
     });
 
     clearTimeout(timeoutId);
+
+    // Check for redirects (3xx status) - block to prevent redirect-based SSRF
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(
+        `Webhook endpoint returned redirect (${response.status}) - redirects not followed for security`
+      );
+    }
 
     // Check response status
     if (!response.ok) {
@@ -124,6 +160,9 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
 
     jobLogger.error({ error: displayError, attempt }, 'Webhook delivery failed');
 
+    // Sanitize error message before storing to remove sensitive details
+    const sanitizedError = sanitizeErrorMessage(displayError);
+
     // Determine if we should retry
     const shouldRetry = attempt < MAX_ATTEMPTS;
 
@@ -138,7 +177,7 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
         .set({
           status: 'pending',
           attempts: attempt,
-          lastError: displayError,
+          lastError: sanitizedError,
           nextRetryAt,
         })
         .where(eq(webhookDeliveries.id, webhookDeliveryId));
@@ -160,7 +199,7 @@ export async function processWebhookJob(job: Job<DeliverWebhookJobData>): Promis
       .set({
         status: 'failed',
         attempts: attempt,
-        lastError: displayError,
+        lastError: sanitizedError,
         nextRetryAt: null,
       })
       .where(eq(webhookDeliveries.id, webhookDeliveryId));

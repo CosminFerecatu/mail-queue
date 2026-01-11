@@ -31,6 +31,17 @@ const ConfigSchema = z.object({
 
   // Logging
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  // Metrics
+  metricsPort: z.coerce.number().int().min(1).max(65535).default(9090),
+  metricsAuthUser: z.string().optional(),
+  metricsAuthPass: z.string().optional(),
+
+  // Privacy
+  anonymizeIpAddresses: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('true'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -48,6 +59,10 @@ function loadConfig(): Config {
     smtpUser: process.env['SMTP_USER'],
     smtpPass: process.env['SMTP_PASS'],
     logLevel: process.env['LOG_LEVEL'],
+    metricsPort: process.env['METRICS_PORT'],
+    metricsAuthUser: process.env['METRICS_AUTH_USER'],
+    metricsAuthPass: process.env['METRICS_AUTH_PASS'],
+    anonymizeIpAddresses: process.env['ANONYMIZE_IP_ADDRESSES'],
   });
 
   if (!result.success) {

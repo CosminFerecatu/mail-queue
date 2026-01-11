@@ -1,6 +1,8 @@
 import { Registry, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { logger } from './logger.js';
+import { config, isProduction } from '../config.js';
 
 // Create a custom registry
 export const metricsRegistry = new Registry();
@@ -156,6 +158,61 @@ export function setSmtpConnections(host: string, count: number): void {
 let metricsServer: http.Server | null = null;
 
 /**
+ * Verify basic auth credentials using constant-time comparison
+ */
+function verifyBasicAuth(authHeader: string | undefined): boolean {
+  const expectedUser = config.metricsAuthUser;
+  const expectedPass = config.metricsAuthPass;
+
+  // If no auth configured, allow access (but warn in production)
+  if (!expectedUser || !expectedPass) {
+    return true;
+  }
+
+  if (!authHeader?.startsWith('Basic ')) {
+    return false;
+  }
+
+  try {
+    const base64Credentials = authHeader.slice(6);
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+    const [user, pass] = credentials.split(':');
+
+    if (!user || !pass) {
+      return false;
+    }
+
+    // Use constant-time comparison to prevent timing attacks
+    const userBuffer = Buffer.from(user);
+    const passBuffer = Buffer.from(pass);
+    const expectedUserBuffer = Buffer.from(expectedUser);
+    const expectedPassBuffer = Buffer.from(expectedPass);
+
+    // Check lengths first (timingSafeEqual requires same length)
+    const userLengthMatch = userBuffer.length === expectedUserBuffer.length;
+    const passLengthMatch = passBuffer.length === expectedPassBuffer.length;
+
+    if (!userLengthMatch || !passLengthMatch) {
+      return false;
+    }
+
+    const userMatch = timingSafeEqual(userBuffer, expectedUserBuffer);
+    const passMatch = timingSafeEqual(passBuffer, expectedPassBuffer);
+
+    return userMatch && passMatch;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if metrics authentication is configured
+ */
+function isMetricsAuthConfigured(): boolean {
+  return !!(config.metricsAuthUser && config.metricsAuthPass);
+}
+
+/**
  * Start a simple HTTP server for Prometheus to scrape metrics
  */
 export function startMetricsServer(port = 9090): void {
@@ -164,8 +221,28 @@ export function startMetricsServer(port = 9090): void {
     return;
   }
 
+  // Warn if no authentication configured in production
+  if (isProduction() && !isMetricsAuthConfigured()) {
+    logger.warn(
+      { port },
+      'Metrics endpoint has no authentication configured. ' +
+        'Set METRICS_AUTH_USER and METRICS_AUTH_PASS environment variables, ' +
+        'or ensure this port is not exposed externally.'
+    );
+  }
+
   metricsServer = http.createServer(async (req, res) => {
     if (req.url === '/metrics' && req.method === 'GET') {
+      // Check authentication for metrics endpoint
+      if (isMetricsAuthConfigured() && !verifyBasicAuth(req.headers.authorization)) {
+        res.writeHead(401, {
+          'WWW-Authenticate': 'Basic realm="Metrics"',
+          'Content-Type': 'text/plain',
+        });
+        res.end('Unauthorized');
+        return;
+      }
+
       try {
         const metrics = await metricsRegistry.metrics();
         res.writeHead(200, { 'Content-Type': metricsRegistry.contentType });
@@ -176,6 +253,7 @@ export function startMetricsServer(port = 9090): void {
         res.end('Error getting metrics');
       }
     } else if (req.url === '/health' && req.method === 'GET') {
+      // Health endpoint remains unauthenticated for load balancer probes
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'healthy' }));
     } else {
@@ -185,7 +263,7 @@ export function startMetricsServer(port = 9090): void {
   });
 
   metricsServer.listen(port, () => {
-    logger.info({ port }, 'Metrics server started');
+    logger.info({ port, authEnabled: isMetricsAuthConfigured() }, 'Metrics server started');
   });
 }
 

@@ -21,7 +21,7 @@ const ParamsSchema = z.object({
 const ListQuerySchema = z.object({
   appId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
 });
 
 // Extended create schema that allows appId for admin users
@@ -133,7 +133,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset, appId: queryAppId } = queryResult.data;
+    const { limit, cursor, appId: queryAppId } = queryResult.data;
     const appId = request.appId || queryAppId;
 
     // Non-admin users must have an appId
@@ -149,11 +149,11 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
     // Admin without appId gets all queues
     if (request.isAdmin && !appId) {
-      const { queues, total } = await getAllQueues({ limit, offset });
+      const result = await getAllQueues({ limit, cursor });
 
       return {
         success: true,
-        data: queues.map((q) => ({
+        data: result.queues.map((q) => ({
           id: q.id,
           appId: q.appId,
           name: q.name,
@@ -167,20 +167,16 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
           createdAt: q.createdAt,
           updatedAt: q.updatedAt,
         })),
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + queues.length < total,
-        },
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       };
     }
 
-    const { queues, total } = await getQueuesByAppId(appId || '', { limit, offset });
+    const result = await getQueuesByAppId(appId || '', { limit, cursor });
 
     return {
       success: true,
-      data: queues.map((q) => ({
+      data: result.queues.map((q) => ({
         id: q.id,
         appId: q.appId,
         name: q.name,
@@ -194,12 +190,8 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         createdAt: q.createdAt,
         updatedAt: q.updatedAt,
       })),
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + queues.length < total,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 

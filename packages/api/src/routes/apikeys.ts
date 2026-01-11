@@ -23,7 +23,7 @@ const KeyParamsSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   isActive: z
     .enum(['true', 'false'])
     .optional()
@@ -126,17 +126,17 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset, isActive } = queryResult.data;
+    const { limit, cursor, isActive } = queryResult.data;
 
-    const { keys, total } = await getApiKeysByAppId(paramsResult.data.appId, {
+    const result = await getApiKeysByAppId(paramsResult.data.appId, {
       limit,
-      offset,
+      cursor,
       isActive,
     });
 
     return {
       success: true,
-      data: keys.map((k) => ({
+      data: result.keys.map((k) => ({
         id: k.id,
         name: k.name,
         keyPrefix: k.keyPrefix,
@@ -148,12 +148,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         createdAt: k.createdAt,
         lastUsedAt: k.lastUsedAt,
       })),
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + keys.length < total,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 
@@ -353,17 +349,17 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset, isActive } = queryResult.data;
+    const { limit, cursor, isActive } = queryResult.data;
 
-    const { keys, total } = await getApiKeysByAppId(request.appId, {
+    const result = await getApiKeysByAppId(request.appId, {
       limit,
-      offset,
+      cursor,
       isActive,
     });
 
     return {
       success: true,
-      data: keys.map((k) => ({
+      data: result.keys.map((k) => ({
         id: k.id,
         name: k.name,
         keyPrefix: k.keyPrefix,
@@ -375,12 +371,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         createdAt: k.createdAt,
         lastUsedAt: k.lastUsedAt,
       })),
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + keys.length < total,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 }

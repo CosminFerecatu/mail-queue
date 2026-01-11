@@ -24,7 +24,7 @@ const ParamsSchema = z.object({
 const ListQuerySchema = z.object({
   appId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   status: z
     .enum(['queued', 'processing', 'sent', 'delivered', 'bounced', 'failed', 'cancelled'])
     .optional(),
@@ -241,7 +241,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       });
     }
 
-    const { limit, offset, status, queueId, appId: queryAppId } = queryResult.data;
+    const { limit, cursor, status, queueId, appId: queryAppId } = queryResult.data;
     const appId = request.appId || queryAppId;
 
     // Non-admin users must have an appId
@@ -257,41 +257,33 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     // Admin without appId gets all emails
     if (request.isAdmin && !appId) {
-      const { emails, total } = await getAllEmails({
+      const result = await getAllEmails({
         limit,
-        offset,
+        cursor,
         status,
         queueId,
       });
 
       return {
         success: true,
-        data: emails,
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + emails.length < total,
-        },
+        data: result.emails,
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       };
     }
 
-    const { emails, total } = await getEmailsByAppId(appId || '', {
+    const result = await getEmailsByAppId(appId || '', {
       limit,
-      offset,
+      cursor,
       status,
       queueId,
     });
 
     return {
       success: true,
-      data: emails,
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + emails.length < total,
-      },
+      data: result.emails,
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 

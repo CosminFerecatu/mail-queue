@@ -1,8 +1,9 @@
-import { eq, and, desc, sql, lte } from 'drizzle-orm';
+import { eq, and, desc, lte, lt, or } from 'drizzle-orm';
 import { getDatabase, scheduledJobs, queues } from '@mail-queue/db';
 import { ValidationError, QueueNotFoundError } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
 import cronParser from 'cron-parser';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 export interface EmailTemplate {
   from: { email: string; name?: string };
@@ -46,8 +47,14 @@ export interface UpdateScheduledJobInput {
 
 export interface ListScheduledJobsOptions {
   limit?: number;
-  offset?: number;
+  cursor?: string;
   isActive?: boolean;
+}
+
+export interface ScheduledJobListResult {
+  jobs: ScheduledJob[];
+  cursor: string | null;
+  hasMore: boolean;
 }
 
 /**
@@ -193,9 +200,9 @@ export async function getScheduledJobById(
 export async function listScheduledJobs(
   appId: string,
   options: ListScheduledJobsOptions = {}
-): Promise<{ jobs: ScheduledJob[]; total: number }> {
+): Promise<ScheduledJobListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0, isActive } = options;
+  const { limit = 50, cursor, isActive } = options;
 
   const conditions = [eq(scheduledJobs.appId, appId)];
 
@@ -203,40 +210,59 @@ export async function listScheduledJobs(
     conditions.push(eq(scheduledJobs.isActive, isActive));
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(scheduledJobs.createdAt, cursorDate),
+        and(eq(scheduledJobs.createdAt, cursorDate), lt(scheduledJobs.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = and(...conditions);
 
-  const [jobsList, countResult] = await Promise.all([
-    db
-      .select({
-        id: scheduledJobs.id,
-        appId: scheduledJobs.appId,
-        queueId: scheduledJobs.queueId,
-        queueName: queues.name,
-        name: scheduledJobs.name,
-        cronExpression: scheduledJobs.cronExpression,
-        timezone: scheduledJobs.timezone,
-        emailTemplate: scheduledJobs.emailTemplate,
-        isActive: scheduledJobs.isActive,
-        lastRunAt: scheduledJobs.lastRunAt,
-        nextRunAt: scheduledJobs.nextRunAt,
-        createdAt: scheduledJobs.createdAt,
-        updatedAt: scheduledJobs.updatedAt,
-      })
-      .from(scheduledJobs)
-      .innerJoin(queues, eq(scheduledJobs.queueId, queues.id))
-      .where(whereClause)
-      .orderBy(desc(scheduledJobs.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(scheduledJobs).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const jobsList = await db
+    .select({
+      id: scheduledJobs.id,
+      appId: scheduledJobs.appId,
+      queueId: scheduledJobs.queueId,
+      queueName: queues.name,
+      name: scheduledJobs.name,
+      cronExpression: scheduledJobs.cronExpression,
+      timezone: scheduledJobs.timezone,
+      emailTemplate: scheduledJobs.emailTemplate,
+      isActive: scheduledJobs.isActive,
+      lastRunAt: scheduledJobs.lastRunAt,
+      nextRunAt: scheduledJobs.nextRunAt,
+      createdAt: scheduledJobs.createdAt,
+      updatedAt: scheduledJobs.updatedAt,
+    })
+    .from(scheduledJobs)
+    .innerJoin(queues, eq(scheduledJobs.queueId, queues.id))
+    .where(whereClause)
+    .orderBy(desc(scheduledJobs.createdAt), desc(scheduledJobs.id))
+    .limit(limit + 1);
+
+  const mappedJobs = jobsList.map((job) => ({
+    ...job,
+    emailTemplate: job.emailTemplate as EmailTemplate,
+  }));
+
+  const result = buildPaginationResult(
+    mappedJobs,
+    limit,
+    (j) => j.createdAt,
+    (j) => j.id
+  );
 
   return {
-    jobs: jobsList.map((job) => ({
-      ...job,
-      emailTemplate: job.emailTemplate as EmailTemplate,
-    })),
-    total: countResult[0]?.count ?? 0,
+    jobs: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

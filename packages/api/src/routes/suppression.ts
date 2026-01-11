@@ -39,7 +39,7 @@ const BulkAddSuppressionSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   reason: SuppressionReasonSchema.optional(),
 });
 
@@ -76,24 +76,20 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
-      const { limit, offset, reason } = queryResult.data;
+      const { limit, cursor, reason } = queryResult.data;
 
-      const { entries, total } = await listSuppressions({
+      const result = await listSuppressions({
         appId: request.appId,
         limit,
-        offset,
+        cursor,
         reason,
       });
 
       return {
         success: true,
-        data: entries,
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + entries.length < total,
-        },
+        data: result.entries,
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       };
     }
   );
@@ -278,7 +274,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         });
       }
 
-      // Get all suppression entries (no pagination for export)
+      // Get all suppression entries (using cursor pagination for export)
       let allEntries: Array<{
         id: string;
         appId: string | null;
@@ -288,18 +284,18 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
         expiresAt: Date | null;
         createdAt: Date;
       }> = [];
-      let offset = 0;
+      let cursor: string | undefined;
       const batchSize = 1000;
 
       while (true) {
-        const { entries, total } = await listSuppressions({
+        const result = await listSuppressions({
           appId: request.appId,
           limit: batchSize,
-          offset,
+          cursor,
         });
-        allEntries = allEntries.concat(entries);
-        offset += entries.length;
-        if (offset >= total) break;
+        allEntries = allEntries.concat(result.entries);
+        if (!result.hasMore || !result.cursor) break;
+        cursor = result.cursor;
       }
 
       // Generate CSV

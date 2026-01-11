@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, or, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, or, inArray, lt } from 'drizzle-orm';
 import {
   getDatabase,
   emails,
@@ -9,6 +9,7 @@ import {
 } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
 import { addToSuppressionList } from './suppression.service.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 export type GdprRequestType = 'export' | 'delete' | 'rectify' | 'access';
 export type GdprRequestStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
@@ -59,7 +60,13 @@ export interface ListGdprRequestsOptions {
   requestType?: GdprRequestType;
   status?: GdprRequestStatus;
   limit?: number;
-  offset?: number;
+  cursor?: string;
+}
+
+export interface GdprRequestListResult {
+  requests: GdprRequest[];
+  cursor: string | null;
+  hasMore: boolean;
 }
 
 export interface ExportedData {
@@ -161,8 +168,8 @@ export async function getGdprRequest(id: string): Promise<GdprRequest | null> {
  */
 export async function listGdprRequests(
   options: ListGdprRequestsOptions
-): Promise<{ requests: GdprRequest[]; total: number; hasMore: boolean }> {
-  const { appId, emailAddress, requestType, status, limit = 50, offset = 0 } = options;
+): Promise<GdprRequestListResult> {
+  const { appId, emailAddress, requestType, status, limit = 50, cursor } = options;
   const db = getDatabase();
 
   const conditions: ReturnType<typeof eq>[] = [];
@@ -184,25 +191,41 @@ export async function listGdprRequests(
     conditions.push(eq(gdprRequests.status, status));
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(gdprRequests.createdAt, cursorDate),
+        and(eq(gdprRequests.createdAt, cursorDate), lt(gdprRequests.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [requests, countResult] = await Promise.all([
-    db
-      .select()
-      .from(gdprRequests)
-      .where(whereClause)
-      .orderBy(desc(gdprRequests.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(gdprRequests).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const requestList = await db
+    .select()
+    .from(gdprRequests)
+    .where(whereClause)
+    .orderBy(desc(gdprRequests.createdAt), desc(gdprRequests.id))
+    .limit(limit + 1);
 
-  const total = countResult[0]?.count ?? 0;
+  const mappedRequests = requestList.map(mapGdprRequest);
+
+  const result = buildPaginationResult(
+    mappedRequests,
+    limit,
+    (r) => r.createdAt,
+    (r) => r.id
+  );
 
   return {
-    requests: requests.map(mapGdprRequest),
-    total,
-    hasMore: offset + requests.length < total,
+    requests: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

@@ -48,7 +48,7 @@ const ParamsSchema = z.object({
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   isActive: z
     .enum(['true', 'false'])
     .transform((val) => val === 'true')
@@ -84,23 +84,19 @@ export const scheduledJobsRoutes: FastifyPluginAsync = async (app: FastifyInstan
         });
       }
 
-      const { limit, offset, isActive } = queryResult.data;
+      const { limit, cursor, isActive } = queryResult.data;
 
-      const { jobs, total } = await listScheduledJobs(request.appId, {
+      const result = await listScheduledJobs(request.appId, {
         limit,
-        offset,
+        cursor,
         isActive,
       });
 
       return {
         success: true,
-        data: jobs,
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + jobs.length < total,
-        },
+        data: result.jobs,
+        cursor: result.cursor,
+        hasMore: result.hasMore,
       };
     }
   );

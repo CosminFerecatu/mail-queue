@@ -1,7 +1,14 @@
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, lt, or, sql } from 'drizzle-orm';
 import { getDatabase, queues, smtpConfigs, emails, type QueueRow } from '@mail-queue/db';
 import type { CreateQueueInput, UpdateQueueInput } from '@mail-queue/core';
 import { getEmailQueue } from '../lib/queue.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+
+export interface QueueListResult {
+  queues: QueueRow[];
+  cursor: string | null;
+  hasMore: boolean;
+}
 
 export async function createQueue(appId: string, input: CreateQueueInput): Promise<QueueRow> {
   const db = getDatabase();
@@ -71,47 +78,88 @@ export async function getQueueByName(name: string, appId: string): Promise<Queue
 
 export async function getQueuesByAppId(
   appId: string,
-  options: { limit?: number; offset?: number } = {}
-): Promise<{ queues: QueueRow[]; total: number }> {
+  options: { limit?: number; cursor?: string } = {}
+): Promise<QueueListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0 } = options;
+  const { limit = 50, cursor } = options;
 
-  const [queueList, countResult] = await Promise.all([
-    db
-      .select()
-      .from(queues)
-      .where(eq(queues.appId, appId))
-      .orderBy(desc(queues.priority), queues.name)
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(queues).where(eq(queues.appId, appId)),
-  ]);
+  const conditions = [eq(queues.appId, appId)];
+
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(queues.createdAt, cursorDate),
+        and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
+      )!
+    );
+  }
+
+  // Fetch limit + 1 to determine if there are more results
+  const queueList = await db
+    .select()
+    .from(queues)
+    .where(and(...conditions))
+    .orderBy(desc(queues.createdAt), desc(queues.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    queueList,
+    limit,
+    (q) => q.createdAt,
+    (q) => q.id
+  );
 
   return {
-    queues: queueList,
-    total: countResult[0]?.count ?? 0,
+    queues: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 
 export async function getAllQueues(
-  options: { limit?: number; offset?: number } = {}
-): Promise<{ queues: QueueRow[]; total: number }> {
+  options: { limit?: number; cursor?: string } = {}
+): Promise<QueueListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0 } = options;
+  const { limit = 50, cursor } = options;
 
-  const [queueList, countResult] = await Promise.all([
-    db
-      .select()
-      .from(queues)
-      .orderBy(desc(queues.priority), queues.name)
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(queues),
-  ]);
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(queues.createdAt, cursorDate),
+        and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
+      )!
+    );
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Fetch limit + 1 to determine if there are more results
+  const queueList = await db
+    .select()
+    .from(queues)
+    .where(whereClause)
+    .orderBy(desc(queues.createdAt), desc(queues.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    queueList,
+    limit,
+    (q) => q.createdAt,
+    (q) => q.id
+  );
 
   return {
-    queues: queueList,
-    total: countResult[0]?.count ?? 0,
+    queues: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

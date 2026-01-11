@@ -1,6 +1,7 @@
-import { eq, and, desc, sql, isNull, or, gt } from 'drizzle-orm';
+import { eq, and, desc, isNull, or, gt, lt, sql } from 'drizzle-orm';
 import { getDatabase, suppressionList } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 export type SuppressionReason =
   | 'hard_bounce'
@@ -30,8 +31,14 @@ export interface AddSuppressionOptions {
 export interface ListSuppressionsOptions {
   appId: string;
   limit?: number;
-  offset?: number;
+  cursor?: string;
   reason?: SuppressionReason;
+}
+
+export interface SuppressionListResult {
+  entries: SuppressionEntry[];
+  cursor: string | null;
+  hasMore: boolean;
 }
 
 /**
@@ -165,8 +172,8 @@ export async function isEmailSuppressed(
  */
 export async function listSuppressions(
   options: ListSuppressionsOptions
-): Promise<{ entries: SuppressionEntry[]; total: number }> {
-  const { appId, limit = 50, offset = 0, reason } = options;
+): Promise<SuppressionListResult> {
+  const { appId, limit = 50, cursor, reason } = options;
   const db = getDatabase();
 
   const conditions = [eq(suppressionList.appId, appId)];
@@ -175,30 +182,49 @@ export async function listSuppressions(
     conditions.push(eq(suppressionList.reason, reason));
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(suppressionList.createdAt, cursorDate),
+        and(eq(suppressionList.createdAt, cursorDate), lt(suppressionList.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = and(...conditions);
 
-  const [entries, countResult] = await Promise.all([
-    db
-      .select()
-      .from(suppressionList)
-      .where(whereClause)
-      .orderBy(desc(suppressionList.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(suppressionList).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const entryList = await db
+    .select()
+    .from(suppressionList)
+    .where(whereClause)
+    .orderBy(desc(suppressionList.createdAt), desc(suppressionList.id))
+    .limit(limit + 1);
+
+  const mappedEntries = entryList.map((e) => ({
+    id: e.id,
+    appId: e.appId,
+    emailAddress: e.emailAddress,
+    reason: e.reason,
+    sourceEmailId: e.sourceEmailId,
+    expiresAt: e.expiresAt,
+    createdAt: e.createdAt,
+  }));
+
+  const result = buildPaginationResult(
+    mappedEntries,
+    limit,
+    (e) => e.createdAt,
+    (e) => e.id
+  );
 
   return {
-    entries: entries.map((e) => ({
-      id: e.id,
-      appId: e.appId,
-      emailAddress: e.emailAddress,
-      reason: e.reason,
-      sourceEmailId: e.sourceEmailId,
-      expiresAt: e.expiresAt,
-      createdAt: e.createdAt,
-    })),
-    total: countResult[0]?.count ?? 0,
+    entries: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

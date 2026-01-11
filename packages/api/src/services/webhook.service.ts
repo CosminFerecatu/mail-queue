@@ -1,4 +1,4 @@
-import { eq, and, desc, lte, count } from 'drizzle-orm';
+import { eq, and, desc, lte, lt, or } from 'drizzle-orm';
 import { getDatabase, webhookDeliveries, apps, emails, queues } from '@mail-queue/db';
 import {
   type WebhookEventType,
@@ -11,6 +11,7 @@ import {
 import { getQueue } from '../lib/queue.js';
 import { logger } from '../lib/logger.js';
 import { randomUUID } from 'node:crypto';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 // ===========================================
 // Types
@@ -25,7 +26,8 @@ export interface CreateWebhookDeliveryOptions {
 
 export interface WebhookDeliveryListResult {
   deliveries: WebhookDelivery[];
-  total: number;
+  cursor: string | null;
+  hasMore: boolean;
 }
 
 // ===========================================
@@ -187,13 +189,13 @@ export interface GetWebhookDeliveriesOptions {
   status?: 'pending' | 'delivered' | 'failed';
   emailId?: string;
   limit?: number;
-  offset?: number;
+  cursor?: string;
 }
 
 export async function getWebhookDeliveries(
   options: GetWebhookDeliveriesOptions
 ): Promise<WebhookDeliveryListResult> {
-  const { appId, status, emailId, limit = 50, offset = 0 } = options;
+  const { appId, status, emailId, limit = 50, cursor } = options;
   const db = getDatabase();
 
   const conditions = [eq(webhookDeliveries.appId, appId)];
@@ -206,34 +208,53 @@ export async function getWebhookDeliveries(
     conditions.push(eq(webhookDeliveries.emailId, emailId));
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(webhookDeliveries.createdAt, cursorDate),
+        and(eq(webhookDeliveries.createdAt, cursorDate), lt(webhookDeliveries.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = and(...conditions);
 
-  const [deliveries, countResult] = await Promise.all([
-    db
-      .select()
-      .from(webhookDeliveries)
-      .where(whereClause)
-      .orderBy(desc(webhookDeliveries.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: count() }).from(webhookDeliveries).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const deliveryList = await db
+    .select()
+    .from(webhookDeliveries)
+    .where(whereClause)
+    .orderBy(desc(webhookDeliveries.createdAt), desc(webhookDeliveries.id))
+    .limit(limit + 1);
+
+  const mappedDeliveries = deliveryList.map((d) => ({
+    id: d.id,
+    appId: d.appId,
+    emailId: d.emailId,
+    eventType: d.eventType,
+    payload: d.payload,
+    status: d.status,
+    attempts: d.attempts,
+    lastError: d.lastError,
+    nextRetryAt: d.nextRetryAt,
+    deliveredAt: d.deliveredAt,
+    createdAt: d.createdAt,
+  }));
+
+  const result = buildPaginationResult(
+    mappedDeliveries,
+    limit,
+    (d) => d.createdAt,
+    (d) => d.id
+  );
 
   return {
-    deliveries: deliveries.map((d) => ({
-      id: d.id,
-      appId: d.appId,
-      emailId: d.emailId,
-      eventType: d.eventType,
-      payload: d.payload,
-      status: d.status,
-      attempts: d.attempts,
-      lastError: d.lastError,
-      nextRetryAt: d.nextRetryAt,
-      deliveredAt: d.deliveredAt,
-      createdAt: d.createdAt,
-    })),
-    total: countResult[0]?.count ?? 0,
+    deliveries: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

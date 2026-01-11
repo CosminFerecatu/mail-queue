@@ -1,7 +1,14 @@
 import bcrypt from 'bcrypt';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, lt, or } from 'drizzle-orm';
 import { getDatabase, apiKeys, apps, type ApiKeyRow } from '@mail-queue/db';
 import { type CreateApiKeyInput, type ApiKeyScope, generateApiKey } from '@mail-queue/core';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+
+export interface ApiKeyListResult {
+  keys: ApiKeyRow[];
+  cursor: string | null;
+  hasMore: boolean;
+}
 
 const BCRYPT_ROUNDS = 12;
 
@@ -63,33 +70,47 @@ export async function getApiKeyById(id: string, appId: string): Promise<ApiKeyRo
 
 export async function getApiKeysByAppId(
   appId: string,
-  options: { limit?: number; offset?: number; isActive?: boolean } = {}
-): Promise<{ keys: ApiKeyRow[]; total: number }> {
+  options: { limit?: number; cursor?: string; isActive?: boolean } = {}
+): Promise<ApiKeyListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0, isActive } = options;
+  const { limit = 50, cursor, isActive } = options;
 
   const conditions = [eq(apiKeys.appId, appId)];
   if (isActive !== undefined) {
     conditions.push(eq(apiKeys.isActive, isActive));
   }
 
-  const [keys, countResult] = await Promise.all([
-    db
-      .select()
-      .from(apiKeys)
-      .where(and(...conditions))
-      .orderBy(desc(apiKeys.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(apiKeys)
-      .where(and(...conditions)),
-  ]);
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(apiKeys.createdAt, cursorDate),
+        and(eq(apiKeys.createdAt, cursorDate), lt(apiKeys.id, cursorData.i))
+      )!
+    );
+  }
+
+  // Fetch limit + 1 to determine if there are more results
+  const keyList = await db
+    .select()
+    .from(apiKeys)
+    .where(and(...conditions))
+    .orderBy(desc(apiKeys.createdAt), desc(apiKeys.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    keyList,
+    limit,
+    (k) => k.createdAt,
+    (k) => k.id
+  );
 
   return {
-    keys,
-    total: countResult[0]?.count ?? 0,
+    keys: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

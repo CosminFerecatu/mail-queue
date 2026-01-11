@@ -10,7 +10,7 @@ import { requireAdminAuth } from '../middleware/auth.js';
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().optional(),
   actorId: z.string().uuid().optional(),
   actorType: z.enum(['user', 'app', 'system']).optional(),
   action: z.string().optional(),
@@ -52,7 +52,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
 
     const {
       limit,
-      offset,
+      cursor,
       actorId,
       actorType,
       action,
@@ -65,7 +65,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
 
     const result = await listAuditLogs({
       limit,
-      offset,
+      cursor,
       actorId,
       actorType: actorType as ActorType | undefined,
       action,
@@ -90,12 +90,8 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         userAgent: entry.userAgent,
         createdAt: entry.createdAt.toISOString(),
       })),
-      pagination: {
-        total: result.total,
-        limit,
-        offset,
-        hasMore: result.hasMore,
-      },
+      cursor: result.cursor,
+      hasMore: result.hasMore,
     };
   });
 

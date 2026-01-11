@@ -223,9 +223,15 @@ export async function processComplaintJob(job: Job<ProcessComplaintJobData>): Pr
   );
 }
 
+// Maximum size for DSN message processing to prevent ReDoS and memory issues
+const MAX_DSN_MESSAGE_LENGTH = 50000; // 50KB
+const MAX_BOUNCE_RECIPIENTS = 100;
+
 /**
  * Parse a DSN (Delivery Status Notification) message
  * This is a simplified parser - real DSN parsing is more complex
+ *
+ * Security: Input is truncated to prevent ReDoS attacks and memory exhaustion
  */
 export function parseDsnMessage(rawMessage: string): {
   bounceType: BounceType;
@@ -234,6 +240,16 @@ export function parseDsnMessage(rawMessage: string): {
   bouncedRecipients: string[];
 } | null {
   try {
+    // Enforce input length limit to prevent ReDoS and memory issues
+    if (!rawMessage || rawMessage.length === 0) {
+      return null;
+    }
+
+    const truncatedMessage =
+      rawMessage.length > MAX_DSN_MESSAGE_LENGTH
+        ? rawMessage.substring(0, MAX_DSN_MESSAGE_LENGTH)
+        : rawMessage;
+
     // Common bounce indicators
     const hardBouncePatterns = [
       /user unknown/i,
@@ -260,7 +276,7 @@ export function parseDsnMessage(rawMessage: string): {
     let bounceSubType: string | undefined;
 
     for (const pattern of hardBouncePatterns) {
-      if (pattern.test(rawMessage)) {
+      if (pattern.test(truncatedMessage)) {
         bounceType = 'hard';
         bounceSubType = 'permanent_failure';
         break;
@@ -269,7 +285,7 @@ export function parseDsnMessage(rawMessage: string): {
 
     if (bounceType === 'soft') {
       for (const pattern of softBouncePatterns) {
-        if (pattern.test(rawMessage)) {
+        if (pattern.test(truncatedMessage)) {
           bounceSubType = 'temporary_failure';
           break;
         }
@@ -277,8 +293,11 @@ export function parseDsnMessage(rawMessage: string): {
     }
 
     // Try to extract email addresses from the message
+    // Limit recipients to prevent memory issues with malformed input
     const emailRegex = /[\w.+-]+@[\w.-]+\.\w+/gi;
-    const bouncedRecipients = [...new Set(rawMessage.match(emailRegex) || [])];
+    const allMatches = truncatedMessage.match(emailRegex) || [];
+    const uniqueRecipients = [...new Set(allMatches)];
+    const bouncedRecipients = uniqueRecipients.slice(0, MAX_BOUNCE_RECIPIENTS);
 
     if (bouncedRecipients.length === 0) {
       return null;
@@ -287,7 +306,7 @@ export function parseDsnMessage(rawMessage: string): {
     return {
       bounceType,
       bounceSubType,
-      bounceMessage: rawMessage.substring(0, 500), // Truncate long messages
+      bounceMessage: truncatedMessage.substring(0, 500), // Truncate for storage
       bouncedRecipients,
     };
   } catch (error) {

@@ -1,6 +1,7 @@
-import { eq, and, desc, sql, gte, lte, or, ilike } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, or, ilike, lt } from 'drizzle-orm';
 import { getDatabase, auditLogs } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 export type ActorType = 'user' | 'app' | 'system';
 
@@ -44,7 +45,13 @@ export interface ListAuditLogsOptions {
   to?: Date;
   search?: string;
   limit?: number;
-  offset?: number;
+  cursor?: string;
+}
+
+export interface AuditLogListResult {
+  entries: AuditLogEntry[];
+  cursor: string | null;
+  hasMore: boolean;
 }
 
 /**
@@ -99,9 +106,7 @@ export async function createAuditLog(options: CreateAuditLogOptions): Promise<Au
 /**
  * List audit log entries with filtering and pagination
  */
-export async function listAuditLogs(
-  options: ListAuditLogsOptions
-): Promise<{ entries: AuditLogEntry[]; total: number; hasMore: boolean }> {
+export async function listAuditLogs(options: ListAuditLogsOptions): Promise<AuditLogListResult> {
   const {
     actorId,
     actorType,
@@ -112,7 +117,7 @@ export async function listAuditLogs(
     to,
     search,
     limit = 50,
-    offset = 0,
+    cursor,
   } = options;
   const db = getDatabase();
 
@@ -163,36 +168,52 @@ export async function listAuditLogs(
     }
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(auditLogs.createdAt, cursorDate),
+        and(eq(auditLogs.createdAt, cursorDate), lt(auditLogs.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [entries, countResult] = await Promise.all([
-    db
-      .select()
-      .from(auditLogs)
-      .where(whereClause)
-      .orderBy(desc(auditLogs.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(auditLogs).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const entryList = await db
+    .select()
+    .from(auditLogs)
+    .where(whereClause)
+    .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
+    .limit(limit + 1);
 
-  const total = countResult[0]?.count ?? 0;
+  const mappedEntries = entryList.map((e) => ({
+    id: e.id,
+    actorType: e.actorType,
+    actorId: e.actorId,
+    action: e.action,
+    resourceType: e.resourceType,
+    resourceId: e.resourceId,
+    changes: e.changes,
+    ipAddress: e.ipAddress,
+    userAgent: e.userAgent,
+    createdAt: e.createdAt,
+  }));
+
+  const result = buildPaginationResult(
+    mappedEntries,
+    limit,
+    (e) => e.createdAt,
+    (e) => e.id
+  );
 
   return {
-    entries: entries.map((e) => ({
-      id: e.id,
-      actorType: e.actorType,
-      actorId: e.actorId,
-      action: e.action,
-      resourceType: e.resourceType,
-      resourceId: e.resourceId,
-      changes: e.changes,
-      ipAddress: e.ipAddress,
-      userAgent: e.userAgent,
-      createdAt: e.createdAt,
-    })),
-    total,
-    hasMore: offset + entries.length < total,
+    entries: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

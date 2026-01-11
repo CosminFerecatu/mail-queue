@@ -49,7 +49,7 @@ async function main() {
   );
 
   // Start metrics server
-  startMetricsServer(9090);
+  startMetricsServer(config.metricsPort);
 
   // Create email worker
   const redisConnection = getRedis() as unknown as ConnectionOptions;

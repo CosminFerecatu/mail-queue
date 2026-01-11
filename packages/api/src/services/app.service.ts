@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, lt, or } from 'drizzle-orm';
 import { getDatabase, apps, type AppRow } from '@mail-queue/db';
 import {
   type CreateAppInput,
@@ -9,6 +9,7 @@ import {
   parseEncryptionKey,
 } from '@mail-queue/core';
 import { config } from '../config.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
 
 const encryptionKey = parseEncryptionKey(config.encryptionKey);
 
@@ -57,35 +58,58 @@ export async function getAppById(id: string): Promise<AppRow | null> {
   return app ?? null;
 }
 
+export interface AppListResult {
+  apps: AppRow[];
+  cursor: string | null;
+  hasMore: boolean;
+}
+
 export async function getApps(options: {
   limit?: number;
-  offset?: number;
+  cursor?: string;
   isActive?: boolean;
-}): Promise<{ apps: AppRow[]; total: number }> {
+}): Promise<AppListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0, isActive } = options;
+  const { limit = 50, cursor, isActive } = options;
 
-  const conditions = [];
+  const conditions: ReturnType<typeof eq>[] = [];
   if (isActive !== undefined) {
     conditions.push(eq(apps.isActive, isActive));
   }
 
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(apps.createdAt, cursorDate),
+        and(eq(apps.createdAt, cursorDate), lt(apps.id, cursorData.i))
+      )!
+    );
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [appList, countResult] = await Promise.all([
-    db
-      .select()
-      .from(apps)
-      .where(whereClause)
-      .orderBy(desc(apps.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(apps).where(whereClause),
-  ]);
+  // Fetch limit + 1 to determine if there are more results
+  const appList = await db
+    .select()
+    .from(apps)
+    .where(whereClause)
+    .orderBy(desc(apps.createdAt), desc(apps.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    appList,
+    limit,
+    (a) => a.createdAt,
+    (a) => a.id
+  );
 
   return {
-    apps: appList,
-    total: countResult[0]?.count ?? 0,
+    apps: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 

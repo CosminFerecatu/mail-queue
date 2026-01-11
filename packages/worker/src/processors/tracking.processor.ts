@@ -3,6 +3,8 @@ import { eq, sql } from 'drizzle-orm';
 import { getDatabase, emails, emailEvents, trackingLinks } from '@mail-queue/db';
 import type { RecordTrackingJobData } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
+import { config } from '../config.js';
+import { anonymizeIpAddress } from '../lib/privacy.js';
 
 /**
  * Process tracking event job (open or click)
@@ -29,6 +31,12 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
 
   const eventTimestamp = new Date(timestamp);
 
+  // Anonymize IP address for GDPR compliance if enabled
+  // Convert null to undefined for database compatibility
+  const processedIpAddress = config.anonymizeIpAddresses
+    ? (anonymizeIpAddress(ipAddress) ?? undefined)
+    : ipAddress;
+
   if (type === 'click') {
     // Update click count on tracking link
     await db
@@ -45,7 +53,7 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
       eventData: {
         linkUrl,
         userAgent,
-        ipAddress,
+        ipAddress: processedIpAddress,
       },
       createdAt: eventTimestamp,
     });
@@ -72,7 +80,7 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
       eventType: 'opened',
       eventData: {
         userAgent,
-        ipAddress,
+        ipAddress: processedIpAddress,
       },
       createdAt: eventTimestamp,
     });

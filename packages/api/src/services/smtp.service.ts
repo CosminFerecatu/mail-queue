@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, lt, or } from 'drizzle-orm';
 import nodemailer from 'nodemailer';
 import { getDatabase, smtpConfigs, type SmtpConfigRow } from '@mail-queue/db';
 import {
@@ -11,6 +11,13 @@ import {
   parseEncryptionKey,
 } from '@mail-queue/core';
 import { config } from '../config.js';
+import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+
+export interface SmtpConfigListResult {
+  configs: SmtpConfigRow[];
+  cursor: string | null;
+  hasMore: boolean;
+}
 
 const encryptionKey = parseEncryptionKey(config.encryptionKey);
 
@@ -62,28 +69,44 @@ export async function getSmtpConfigById(id: string, appId: string): Promise<Smtp
 
 export async function getSmtpConfigsByAppId(
   appId: string,
-  options: { limit?: number; offset?: number } = {}
-): Promise<{ configs: SmtpConfigRow[]; total: number }> {
+  options: { limit?: number; cursor?: string } = {}
+): Promise<SmtpConfigListResult> {
   const db = getDatabase();
-  const { limit = 50, offset = 0 } = options;
+  const { limit = 50, cursor } = options;
 
-  const [configs, countResult] = await Promise.all([
-    db
-      .select()
-      .from(smtpConfigs)
-      .where(eq(smtpConfigs.appId, appId))
-      .orderBy(desc(smtpConfigs.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(smtpConfigs)
-      .where(eq(smtpConfigs.appId, appId)),
-  ]);
+  const conditions = [eq(smtpConfigs.appId, appId)];
+
+  // Apply cursor-based pagination
+  const cursorData = parseCursor(cursor);
+  if (cursorData) {
+    const cursorDate = new Date(cursorData.c);
+    conditions.push(
+      or(
+        lt(smtpConfigs.createdAt, cursorDate),
+        and(eq(smtpConfigs.createdAt, cursorDate), lt(smtpConfigs.id, cursorData.i))
+      )!
+    );
+  }
+
+  // Fetch limit + 1 to determine if there are more results
+  const configList = await db
+    .select()
+    .from(smtpConfigs)
+    .where(and(...conditions))
+    .orderBy(desc(smtpConfigs.createdAt), desc(smtpConfigs.id))
+    .limit(limit + 1);
+
+  const result = buildPaginationResult(
+    configList,
+    limit,
+    (c) => c.createdAt,
+    (c) => c.id
+  );
 
   return {
-    configs,
-    total: countResult[0]?.count ?? 0,
+    configs: result.items,
+    cursor: result.cursor,
+    hasMore: result.hasMore,
   };
 }
 
