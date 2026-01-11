@@ -27,6 +27,9 @@ import { webhooksRoutes } from './routes/webhooks.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { suppressionRoutes } from './routes/suppression.js';
 import { scheduledJobsRoutes } from './routes/scheduled-jobs.js';
+import { auditRoutes } from './routes/audit.js';
+import { gdprRoutes } from './routes/gdpr.js';
+import { retentionRoutes } from './routes/retention.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -137,6 +140,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(webhooksRoutes, { prefix: '/v1' });
   await app.register(suppressionRoutes, { prefix: '/v1' });
   await app.register(scheduledJobsRoutes, { prefix: '/v1' });
+  await app.register(auditRoutes, { prefix: '/v1' });
+  await app.register(gdprRoutes, { prefix: '/v1' });
+  await app.register(retentionRoutes, { prefix: '/v1' });
 
   // Root route
   app.get('/', async () => ({

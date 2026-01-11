@@ -7,7 +7,9 @@ import {
   isEmailSuppressed,
   listSuppressions,
   bulkAddToSuppressionList,
+  type SuppressionReason,
 } from '../services/suppression.service.js';
+import { logAuditEvent, AuditActions } from '../middleware/audit.js';
 
 const SuppressionReasonSchema = z.enum([
   'hard_bounce',
@@ -258,6 +260,203 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       }
 
       return reply.status(204).send();
+    }
+  );
+
+  // Export suppression list as CSV
+  app.get(
+    '/suppression/export',
+    { preHandler: requireScope('suppression:manage') },
+    async (request, reply) => {
+      if (!request.appId) {
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'App authentication required',
+          },
+        });
+      }
+
+      // Get all suppression entries (no pagination for export)
+      let allEntries: Array<{
+        id: string;
+        appId: string | null;
+        emailAddress: string;
+        reason: SuppressionReason;
+        sourceEmailId: string | null;
+        expiresAt: Date | null;
+        createdAt: Date;
+      }> = [];
+      let offset = 0;
+      const batchSize = 1000;
+
+      while (true) {
+        const { entries, total } = await listSuppressions({
+          appId: request.appId,
+          limit: batchSize,
+          offset,
+        });
+        allEntries = allEntries.concat(entries);
+        offset += entries.length;
+        if (offset >= total) break;
+      }
+
+      // Generate CSV
+      const csvHeader = 'email_address,reason,expires_at,created_at';
+      const csvRows = allEntries.map((entry) => {
+        const expiresAt = entry.expiresAt ? entry.expiresAt.toISOString() : '';
+        const createdAt = entry.createdAt.toISOString();
+        return `${entry.emailAddress},${entry.reason},${expiresAt},${createdAt}`;
+      });
+      const csv = [csvHeader, ...csvRows].join('\n');
+
+      // Log audit event
+      await logAuditEvent(request, AuditActions.SUPPRESSION_EXPORT, 'suppression_list', undefined, {
+        after: { entriesExported: allEntries.length },
+      });
+
+      reply.header('Content-Type', 'text/csv');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="suppression_list_${new Date().toISOString().split('T')[0]}.csv"`
+      );
+      return csv;
+    }
+  );
+
+  // Import suppression list from CSV
+  app.post(
+    '/suppression/import',
+    { preHandler: requireScope('suppression:manage') },
+    async (request, reply) => {
+      if (!request.appId) {
+        return reply.status(401).send({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'App authentication required',
+          },
+        });
+      }
+
+      const body = request.body as { csv?: string };
+
+      if (!body.csv || typeof body.csv !== 'string') {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'CSV data is required in the "csv" field',
+          },
+        });
+      }
+
+      const lines = body.csv.trim().split('\n');
+      if (lines.length < 2) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'CSV must have a header row and at least one data row',
+          },
+        });
+      }
+
+      // Parse header to determine column order
+      const header =
+        lines[0]
+          ?.toLowerCase()
+          .split(',')
+          .map((h) => h.trim()) ?? [];
+      const emailIndex = header.indexOf('email_address');
+      const reasonIndex = header.indexOf('reason');
+
+      if (emailIndex === -1) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'CSV must have an "email_address" column',
+          },
+        });
+      }
+
+      // Parse data rows
+      const entries: Array<{ emailAddress: string; reason: SuppressionReason }> = [];
+      const errors: Array<{ line: number; error: string }> = [];
+      const validReasons: SuppressionReason[] = [
+        'hard_bounce',
+        'soft_bounce',
+        'complaint',
+        'unsubscribe',
+        'manual',
+      ];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line?.trim()) continue;
+
+        const cols = line.split(',').map((c) => c.trim());
+        const email = cols[emailIndex];
+        const reason = (reasonIndex !== -1 ? cols[reasonIndex] : 'manual') as SuppressionReason;
+
+        if (!email) {
+          errors.push({ line: i + 1, error: 'Missing email address' });
+          continue;
+        }
+
+        // Basic email validation
+        if (!email.includes('@')) {
+          errors.push({ line: i + 1, error: `Invalid email: ${email}` });
+          continue;
+        }
+
+        if (!validReasons.includes(reason)) {
+          errors.push({ line: i + 1, error: `Invalid reason: ${reason}` });
+          continue;
+        }
+
+        entries.push({ emailAddress: email, reason });
+      }
+
+      if (entries.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'No valid entries found in CSV',
+            details: errors,
+          },
+        });
+      }
+
+      // Import in batches
+      const batchSize = 1000;
+      let totalAdded = 0;
+      let totalSkipped = 0;
+
+      for (let i = 0; i < entries.length; i += batchSize) {
+        const batch = entries.slice(i, i + batchSize);
+        const result = await bulkAddToSuppressionList(request.appId, batch);
+        totalAdded += result.added;
+        totalSkipped += result.skipped;
+      }
+
+      // Log audit event
+      await logAuditEvent(request, AuditActions.SUPPRESSION_IMPORT, 'suppression_list', undefined, {
+        after: { entriesImported: totalAdded, entriesSkipped: totalSkipped, errors: errors.length },
+      });
+
+      return reply.status(201).send({
+        success: true,
+        data: {
+          imported: totalAdded,
+          skipped: totalSkipped,
+          errors: errors.length > 0 ? errors.slice(0, 100) : undefined, // Limit errors in response
+          totalErrors: errors.length,
+        },
+      });
     }
   );
 };

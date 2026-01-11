@@ -1,0 +1,48 @@
+{
+  "name": "@mail-queue/sdk",
+  "version": "0.0.1",
+  "description": "Official JavaScript/TypeScript SDK for Mail Queue - Enterprise Email Orchestration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "biome lint src",
+    "lint:fix": "biome lint --write src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["email", "queue", "smtp", "mail", "transactional", "sdk"],
+  "author": "Mail Queue Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mail-queue/mail-queue.git",
+    "directory": "packages/sdk-js"
+  },
+  "bugs": {
+    "url": "https://github.com/mail-queue/mail-queue/issues"
+  },
+  "homepage": "https://github.com/mail-queue/mail-queue#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9",
+    "@vitest/coverage-v8": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

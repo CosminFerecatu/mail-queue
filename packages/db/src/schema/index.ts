@@ -24,3 +24,6 @@ export * from './users.js';
 
 // Reputation
 export * from './reputation.js';
+
+// GDPR
+export * from './gdpr.js';
