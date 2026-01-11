@@ -1,0 +1,154 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: mail-queue-production
+
+namespace: mail-queue
+
+resources:
+  - ../../base
+
+labels:
+  - includeSelectors: false
+    pairs:
+      environment: production
+
+images:
+  - name: ghcr.io/your-org/mail-queue-api
+    newTag: v1.0.0
+  - name: ghcr.io/your-org/mail-queue-worker
+    newTag: v1.0.0
+  - name: ghcr.io/your-org/mail-queue-dashboard
+    newTag: v1.0.0
+
+patches:
+  # Increase replicas for production
+  - target:
+      kind: Deployment
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 5
+
+  - target:
+      kind: Deployment
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 10
+
+  - target:
+      kind: Deployment
+      name: mail-queue-dashboard
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+
+  # Production-grade resources for API
+  - target:
+      kind: Deployment
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+
+  # Production-grade resources for Worker
+  - target:
+      kind: Deployment
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
+
+  # Production-grade resources for Dashboard
+  - target:
+      kind: Deployment
+      name: mail-queue-dashboard
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+
+  # Production HPA settings
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 5
+      - op: replace
+        path: /spec/maxReplicas
+        value: 30
+
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 10
+      - op: replace
+        path: /spec/maxReplicas
+        value: 100
+
+  # Production PDBs (stricter)
+  - target:
+      kind: PodDisruptionBudget
+      name: mail-queue-api-pdb
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 3
+
+  - target:
+      kind: PodDisruptionBudget
+      name: mail-queue-worker-pdb
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 5
+
+  - target:
+      kind: PodDisruptionBudget
+      name: mail-queue-dashboard-pdb
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 2
+
+# Production ConfigMap overrides
+configMapGenerator:
+  - name: mail-queue-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - GLOBAL_RATE_LIMIT=50000
+      - WORKER_CONCURRENCY=25
+      - OTEL_TRACING_ENABLED=true
+      - NEXT_PUBLIC_API_URL=https://api.mail-queue.example.com

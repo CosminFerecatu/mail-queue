@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mail-queue-worker
+  namespace: mail-queue
+  labels:
+    app.kubernetes.io/name: mail-queue
+    app.kubernetes.io/component: worker
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  # Headless service for direct pod discovery
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: mail-queue
+    app.kubernetes.io/component: worker
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

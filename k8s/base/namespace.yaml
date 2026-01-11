@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mail-queue
+  labels:
+    app.kubernetes.io/name: mail-queue
+    app.kubernetes.io/part-of: mail-queue-system
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    description: "Multi-tenant email orchestration system"

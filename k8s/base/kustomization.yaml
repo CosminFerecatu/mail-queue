@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: mail-queue-base
+
+namespace: mail-queue
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: mail-queue-system
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - network-policies.yaml
+  - services/api/deployment.yaml
+  - services/api/service.yaml
+  - services/api/hpa.yaml
+  - services/worker/deployment.yaml
+  - services/worker/service.yaml
+  - services/worker/hpa.yaml
+  - services/dashboard/deployment.yaml
+  - services/dashboard/service.yaml
+  - ingress.yaml
+  - pod-disruption-budgets.yaml
+
+commonLabels:
+  app.kubernetes.io/name: mail-queue
+
+images:
+  - name: mail-queue/api
+    newName: ghcr.io/your-org/mail-queue-api
+    newTag: latest
+  - name: mail-queue/worker
+    newName: ghcr.io/your-org/mail-queue-worker
+    newTag: latest
+  - name: mail-queue/dashboard
+    newName: ghcr.io/your-org/mail-queue-dashboard
+    newTag: latest

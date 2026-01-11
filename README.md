@@ -1,10 +1,71 @@
 # Mail Queue - Enterprise Email Orchestration System
 
+[![CI](https://github.com/your-org/mail-queue/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/mail-queue/actions/workflows/ci.yml)
+
 ## Overview
 
-A multi-tenant email queue orchestration system designed for enterprise scale (1M+ emails/day). Provides both an embeddable TypeScript library and a standalone service with REST API.
+A multi-tenant email queue orchestration system designed for enterprise scale (1M+ emails/day). Provides both an embeddable TypeScript SDK and a standalone service with REST API.
 
----
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- pnpm 9+
+- Docker & Docker Compose
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/mail-queue.git
+cd mail-queue
+
+# Install dependencies
+pnpm install
+
+# Start infrastructure (PostgreSQL, Redis, MailHog)
+docker compose -f docker/docker-compose.yml up -d
+
+# Run database migrations
+pnpm db:migrate
+
+# Seed development data (optional)
+pnpm db:seed
+
+# Start all services in development mode
+pnpm dev
+```
+
+### Available Scripts
+
+```bash
+pnpm build          # Build all packages
+pnpm dev            # Start all services in dev mode
+pnpm lint           # Run Biome linter
+pnpm lint:fix       # Fix linting issues
+pnpm format         # Format code with Biome
+pnpm test           # Run all tests
+pnpm test:coverage  # Run tests with coverage
+pnpm typecheck      # TypeScript type checking
+pnpm clean          # Clean all build artifacts
+
+# Database commands
+pnpm db:migrate     # Run migrations
+pnpm db:generate    # Generate new migrations
+pnpm db:studio      # Open Drizzle Studio GUI
+pnpm db:seed        # Seed database
+```
+
+### Service Ports
+
+| Service | Port | Description |
+|---------|------|-------------|
+| API | 3000 | REST API |
+| Dashboard | 3001 | Admin UI |
+| MailHog | 8025 | Email testing UI |
+| PostgreSQL | 5432 | Database |
+| Redis | 6379 | Queue backend |
 
 ## Requirements Summary
 
@@ -679,6 +740,7 @@ mail-queue/
 │   │   │   ├── models/            # TypeScript interfaces & Zod schemas
 │   │   │   ├── validation/        # Email validation logic
 │   │   │   ├── encryption/        # AES-256-GCM helpers
+│   │   │   ├── errors/            # Custom error classes
 │   │   │   ├── queue/             # BullMQ queue definitions
 │   │   │   └── index.ts
 │   │   └── package.json
@@ -686,311 +748,139 @@ mail-queue/
 │   ├── db/                        # Database layer
 │   │   ├── src/
 │   │   │   ├── schema/            # Drizzle schema definitions
-│   │   │   ├── repositories/      # Data access layer
 │   │   │   └── index.ts
+│   │   ├── drizzle/               # Generated migrations
 │   │   ├── drizzle.config.ts
 │   │   └── package.json
 │   │
 │   ├── api/                       # REST API Service
 │   │   ├── src/
-│   │   │   ├── routes/            # Fastify routes
-│   │   │   ├── middleware/        # Auth, rate limit, validation
-│   │   │   ├── services/          # Business logic
+│   │   │   ├── routes/            # Fastify routes (15+ modules)
+│   │   │   ├── middleware/        # Auth, audit logging
+│   │   │   ├── services/          # Business logic (13 services)
 │   │   │   ├── plugins/           # Fastify plugins
-│   │   │   └── index.ts
-│   │   ├── Dockerfile
+│   │   │   └── lib/               # Utilities (rate limiting, redis, tracing)
 │   │   └── package.json
 │   │
-│   ├── worker/                    # Email sending workers
+│   ├── worker/                    # BullMQ job processors
 │   │   ├── src/
-│   │   │   ├── processors/        # BullMQ job processors
-│   │   │   ├── smtp/              # SMTP client with pooling
-│   │   │   ├── circuit-breaker/   # Circuit breaker implementation
+│   │   │   ├── processors/        # Email, webhook, bounce, analytics processors
+│   │   │   ├── smtp/              # SMTP client for email delivery
+│   │   │   ├── lib/               # Logger, metrics, privacy, SSRF protection
 │   │   │   └── index.ts
-│   │   ├── Dockerfile
 │   │   └── package.json
 │   │
-│   ├── scheduler/                 # Scheduling service
-│   │   ├── src/
-│   │   │   ├── cron/              # Cron job runner
-│   │   │   ├── recurring/         # Recurring email logic
-│   │   │   └── index.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── webhook/                   # Outbound webhooks
-│   │   ├── src/
-│   │   │   ├── dispatcher/        # Webhook delivery with retry
-│   │   │   ├── signing/           # HMAC signature generation
-│   │   │   └── index.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── tracking/                  # Open/click tracking service
-│   │   ├── src/
-│   │   │   ├── pixel/             # 1x1 GIF serving
-│   │   │   ├── redirect/          # Link redirect handler
-│   │   │   └── index.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── inbound/                   # Inbound email (bounce) processor
-│   │   ├── src/
-│   │   │   ├── smtp-server/       # SMTP server for receiving bounces
-│   │   │   ├── parser/            # DSN/bounce parsing
-│   │   │   └── index.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── dashboard/                 # Admin UI (Next.js)
+│   ├── dashboard/                 # Admin UI (Next.js 15 / React 19)
 │   │   ├── src/
 │   │   │   ├── app/               # Next.js app router
 │   │   │   ├── components/        # React components (shadcn/ui)
 │   │   │   ├── hooks/             # React hooks
 │   │   │   └── lib/               # API client, utils
-│   │   ├── Dockerfile
 │   │   └── package.json
 │   │
-│   ├── sdk-js/                    # JavaScript/TypeScript SDK
-│   │   ├── src/
-│   │   │   ├── client.ts          # Main client class
-│   │   │   ├── resources/         # Emails, Queues, Analytics
-│   │   │   ├── types.ts           # Exported types
-│   │   │   └── index.ts
-│   │   └── package.json
-│   │
-│   └── sdk-python/                # Python SDK
-│       ├── mail_queue/
-│       │   ├── client.py
-│       │   ├── resources/
-│       │   └── types.py
-│       ├── pyproject.toml
-│       └── README.md
-│
-├── database/
-│   ├── migrations/                # Drizzle migrations
-│   ├── seeds/                     # Test data seeds
-│   └── partitions/                # Partition management scripts
+│   └── sdk-js/                    # TypeScript SDK
+│       ├── src/
+│       │   ├── client.ts          # Main client class
+│       │   ├── http-client.ts     # HTTP transport layer
+│       │   ├── resources/         # Emails, Queues, Analytics, etc.
+│       │   ├── errors.ts          # SDK error handling
+│       │   ├── types.ts           # Exported types
+│       │   └── index.ts
+│       └── package.json
 │
 ├── docker/
-│   ├── docker-compose.yml         # Local development
-│   ├── docker-compose.prod.yml    # Production simulation
-│   ├── .env.example               # Environment template
-│   └── k8s/                       # Kubernetes manifests
-│       ├── namespace.yaml
-│       ├── configmap.yaml
-│       ├── secrets.yaml
-│       ├── api/
-│       ├── worker/
-│       ├── redis/
-│       └── postgres/
-│
-├── scripts/
-│   ├── setup.sh                   # Development setup
-│   ├── migrate.sh                 # Run migrations
-│   ├── partition-manager.sh       # Create monthly partitions
-│   └── load-test.sh               # Run k6 load tests
-│
-├── tests/
-│   ├── e2e/                       # End-to-end tests
-│   ├── load/                      # k6 load test scripts
-│   └── fixtures/                  # Test data
-│
-├── docs/
-│   ├── api.md                     # API documentation
-│   ├── sdk.md                     # SDK documentation
-│   ├── deployment.md              # Deployment guide
-│   └── architecture.md            # Architecture decisions
+│   ├── docker-compose.yml         # Development infrastructure
+│   └── init-db.sql                # Initial DB setup
 │
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                 # Build, test, lint
-│       ├── release.yml            # Version and publish
-│       └── deploy.yml             # Deploy to staging/prod
+│       └── ci.yml                 # Lint, typecheck, test, build
 │
 ├── turbo.json                     # Turborepo config
 ├── package.json                   # Root package.json
 ├── pnpm-workspace.yaml            # pnpm workspace config
 ├── biome.json                     # Linting/formatting (Biome)
-├── .env.example                   # Root env template
+├── .env.example                   # Environment template
 └── README.md
 ```
 
 ---
 
-## Implementation Phases
+## Implemented Features
 
-### Phase 1: Foundation (Week 1)
-- [ ] Initialize monorepo (Turborepo + pnpm)
-- [ ] Create `@mail-queue/core` package
-  - TypeScript interfaces and Zod schemas
-  - Email validation (RFC 5322)
-  - Encryption helpers (AES-256-GCM)
-  - BullMQ queue definitions
-- [ ] Create `@mail-queue/db` package
-  - Drizzle schema for all tables
-  - Partitioning setup for emails/events
-  - Seed scripts for development
-- [ ] Docker Compose setup
-  - PostgreSQL 16
-  - Redis 7 (single node for dev)
-  - MailHog (local SMTP)
-- [ ] CI/CD pipeline (GitHub Actions)
+### Core Infrastructure
+- [x] Monorepo with Turborepo + pnpm
+- [x] TypeScript 5+ with strict mode
+- [x] Biome for linting and formatting
+- [x] GitHub Actions CI pipeline
 
-### Phase 2: Core Email Flow (Week 2)
-- [ ] `@mail-queue/api` service
-  - Fastify server setup
-  - Health check endpoint
-  - Email submission endpoint (POST /v1/emails)
-  - Input validation
-  - Idempotency key support
-- [ ] `@mail-queue/worker` service
-  - BullMQ consumer setup
-  - SMTP sending with Nodemailer
-  - Connection pooling
-  - Basic retry logic (5 attempts)
-  - Status updates to database
-- [ ] Email status endpoint (GET /v1/emails/:id)
+### `@mail-queue/core`
+- [x] TypeScript interfaces and Zod schemas
+- [x] Email validation (RFC 5322)
+- [x] Encryption helpers (AES-256-GCM)
+- [x] BullMQ queue definitions
+- [x] Custom error classes
 
-### Phase 3: Multi-Tenancy (Week 3)
-- [ ] App management
-  - App creation/listing endpoints
-  - API key generation (bcrypt hashed)
-  - Key prefix identification (mq_live_, mq_test_)
-- [ ] API authentication middleware
-  - API key validation
-  - Scope checking
-  - IP allowlist enforcement
-- [ ] Queue management
-  - Queue CRUD endpoints
-  - Per-app queue isolation
-  - SMTP config per app
-- [ ] Hierarchical rate limiting
-  - Token bucket per API key
-  - Sliding window per queue
-  - Rate limit headers
-- [ ] Priority queue processing
+### `@mail-queue/db`
+- [x] Drizzle ORM schema for all tables
+- [x] Migration system
+- [x] Seed scripts for development
 
-### Phase 4: Observability (Week 4)
-- [ ] Structured logging (Pino)
-- [ ] Prometheus metrics
-  - Email counters
-  - Queue depth gauges
-  - Latency histograms
-- [ ] OpenTelemetry tracing
-- [ ] Health check endpoints (detailed)
-- [ ] Grafana dashboards
-- [ ] Alert rules
+### `@mail-queue/api`
+- [x] Fastify REST API
+- [x] Email submission (POST /v1/emails)
+- [x] Batch sending (POST /v1/emails/batch)
+- [x] Queue management endpoints
+- [x] SMTP configuration endpoints
+- [x] API key management
+- [x] App management
+- [x] Suppression list management
+- [x] GDPR compliance endpoints
+- [x] Webhook management
+- [x] Analytics endpoints
+- [x] Scheduled jobs endpoints
+- [x] Health check endpoints
+- [x] Rate limiting with token bucket
+- [x] JWT + API key authentication
+- [x] OpenTelemetry tracing
+- [x] Prometheus metrics
 
-### Phase 5: Analytics & Webhooks (Week 5)
-- [ ] Email event tracking
-  - Event recording on status changes
-  - Event querying endpoint
-- [ ] `@mail-queue/webhook` service
-  - Outbound webhook delivery
-  - HMAC signature generation
-  - Retry with exponential backoff
-  - Delivery tracking
-- [ ] `@mail-queue/tracking` service
-  - Open tracking (1x1 pixel)
-  - Click tracking (link rewriting + redirect)
-  - Event recording via queue
-- [ ] Analytics endpoints
-  - Delivery metrics
-  - Engagement metrics (opens/clicks)
-  - Bounce breakdown
+### `@mail-queue/worker`
+- [x] BullMQ job processors
+- [x] Email sending via SMTP
+- [x] Webhook delivery processor
+- [x] Bounce handling processor
+- [x] Analytics processor
+- [x] Tracking processor
+- [x] Scheduler processor
+- [x] SSRF protection
+- [x] Privacy utilities
 
-### Phase 6: Advanced Features (Week 6)
-- [ ] `@mail-queue/scheduler` service
-  - Scheduled email sends
-  - Recurring emails (cron)
-  - Timezone handling
-- [ ] `@mail-queue/inbound` service
-  - SMTP server for bounces
-  - DSN/bounce parsing
-  - Suppression list updates
-- [ ] Bounce/complaint management
-  - Auto-suppression
-  - Reputation scoring
-  - Throttling for high-bounce apps
-- [ ] Sandbox mode
-  - Per-app toggle
-  - Email logging without sending
-  - Event simulation
-- [ ] Personalization engine
-  - Variable substitution {{var}}
-  - Nested objects {{user.name}}
-  - Default values {{name|'Friend'}}
-- [ ] Batch sending
-  - POST /v1/emails/batch
-  - Efficient job splitting
-  - Per-recipient personalization
+### `@mail-queue/dashboard`
+- [x] Next.js 15 / React 19 admin UI
+- [x] Authentication (login/logout)
+- [x] App management pages
+- [x] Queue management pages
+- [x] Email browser
+- [x] Analytics dashboards
+- [x] Suppression list management
+- [x] User management
+- [x] Settings configuration
+- [x] Dark mode support
+- [x] Responsive design
 
-### Phase 7: Admin Dashboard (Week 7-8)
-- [ ] Next.js app setup
-- [ ] Authentication
-  - Login/logout
-  - JWT with refresh tokens
-  - MFA support
-- [ ] Dashboard pages
-  - Overview (key metrics)
-  - Apps management
-  - Queue management
-  - Email browser/search
-  - Analytics dashboards
-  - Suppression list management
-  - User management
-- [ ] Real-time updates (WebSocket)
-- [ ] Email preview rendering
+### `@mail-queue/sdk-js`
+- [x] TypeScript SDK client
+- [x] HTTP client with retry logic
+- [x] Resource modules (emails, queues, analytics, etc.)
+- [x] Type-safe API
+- [x] Error handling
 
-### Phase 8: SDKs (Week 9)
-- [ ] `@mail-queue/sdk-js`
-  - Client class
-  - Resource methods (emails, queues, analytics)
-  - TypeScript types
-  - Error handling
-  - Retry logic
-  - NPM publishing
-- [ ] Python SDK
-  - Sync and async clients
-  - Type hints
-  - PyPI publishing
-- [ ] SDK documentation
-
-### Phase 9: GDPR & Compliance (Week 10)
-- [ ] GDPR endpoints
-  - Data export (GET /v1/gdpr/export/:email)
-  - Data deletion (DELETE /v1/gdpr/:email)
-  - Request tracking
-- [ ] Audit logging
-  - All admin actions logged
-  - API actions logged
-- [ ] Suppression list management
-  - Import/export
-  - Bulk operations
-- [ ] Data retention
-  - Configurable retention per app
-  - Automatic cleanup jobs
-  - Archival to cold storage
-
-### Phase 10: Production Readiness (Week 11-12)
-- [ ] Security audit
-  - Penetration testing
-  - Dependency audit
-- [ ] Load testing
-  - k6 scripts
-  - Performance optimization
-- [ ] Kubernetes manifests
-  - Deployments
-  - Services
-  - HPA (autoscaling)
-  - PodDisruptionBudgets
-- [ ] Documentation
-  - API reference
-  - Deployment guide
-  - Troubleshooting guide
-- [ ] Redis Cluster setup guide
-- [ ] Backup/restore procedures
+### Docker Infrastructure
+- [x] PostgreSQL 16
+- [x] Redis 7
+- [x] MailHog (development SMTP)
+- [x] Optional monitoring stack (Prometheus, Grafana, Jaeger)
 
 ---
 
@@ -1234,24 +1124,144 @@ kubectl apply -f docker/k8s/ -n staging
 
 ---
 
-## Open Questions (Resolved)
+## Design Decisions
 
 | Question | Decision |
 |----------|----------|
 | Templates? | No - apps send rendered HTML |
 | Attachments? | No - not supported |
 | SDK mode? | HTTP client only |
-| Initial deployment? | Docker Compose, K8s-ready |
+| Deployment? | Docker Compose for dev, K8s-ready for production |
+| ORM? | Drizzle ORM (TypeScript-first) |
+| Linter? | Biome (faster than ESLint) |
 
 ---
 
-## Next Steps
+## Not Implemented Yet
 
-1. Initialize monorepo with Turborepo + pnpm
-2. Create core package with TypeScript models
-3. Set up PostgreSQL schema with Prisma
-4. Implement basic API service
-5. Add BullMQ integration
-6. Create worker service
+The following features are planned but not yet implemented:
 
-Ready to implement when approved.
+### Standalone Service Packages
+
+These services are currently handled within the worker package but are planned as separate microservices for better scalability:
+
+```
+├── scheduler/                 # Scheduling service
+│   ├── src/
+│   │   ├── cron/              # Cron job runner
+│   │   ├── recurring/         # Recurring email logic
+│   │   └── index.ts
+│   ├── Dockerfile
+│   └── package.json
+│
+├── webhook/                   # Outbound webhooks service
+│   ├── src/
+│   │   ├── dispatcher/        # Webhook delivery with retry
+│   │   ├── signing/           # HMAC signature generation
+│   │   └── index.ts
+│   ├── Dockerfile
+│   └── package.json
+│
+├── tracking/                  # Open/click tracking service
+│   ├── src/
+│   │   ├── pixel/             # 1x1 GIF serving
+│   │   ├── redirect/          # Link redirect handler
+│   │   └── index.ts
+│   ├── Dockerfile
+│   └── package.json
+│
+├── inbound/                   # Inbound email (bounce) processor
+│   ├── src/
+│   │   ├── smtp-server/       # SMTP server for receiving bounces
+│   │   ├── parser/            # DSN/bounce parsing
+│   │   └── index.ts
+│   ├── Dockerfile
+│   └── package.json
+```
+
+### Worker Enhancements
+
+```
+├── worker/
+│   ├── src/
+│   │   ├── circuit-breaker/   # Circuit breaker implementation
+│   │   │   └── index.ts       # Per-SMTP server circuit breaker
+```
+
+**Circuit Breaker Pattern (Planned):**
+```
+- Opens after 5 consecutive failures to same SMTP
+- Half-open after 30 seconds
+- Closes after 3 successful sends
+```
+
+### Infrastructure & DevOps
+
+```
+├── database/
+│   ├── migrations/                # Drizzle migrations (versioned)
+│   ├── seeds/                     # Test data seeds
+│   └── partitions/                # Partition management scripts
+│
+├── scripts/
+│   ├── setup.sh                   # Development setup
+│   ├── migrate.sh                 # Run migrations
+│   ├── partition-manager.sh       # Create monthly partitions
+│   └── load-test.sh               # Run k6 load tests
+│
+├── tests/
+│   ├── e2e/                       # End-to-end tests
+│   ├── load/                      # k6 load test scripts
+│   └── fixtures/                  # Test data
+│
+├── docs/
+│   ├── api.md                     # API documentation
+│   ├── sdk.md                     # SDK documentation
+│   ├── deployment.md              # Deployment guide
+│   └── architecture.md            # Architecture decisions
+│
+├── docker/
+│   ├── docker-compose.prod.yml    # Production simulation
+│   └── k8s/                       # Kubernetes manifests
+│       ├── namespace.yaml
+│       ├── configmap.yaml
+│       ├── secrets.yaml
+│       ├── api/
+│       ├── worker/
+│       ├── redis/
+│       └── postgres/
+```
+
+### CI/CD Workflows
+
+```
+├── .github/
+│   └── workflows/
+│       ├── release.yml            # Version and publish
+│       └── deploy.yml             # Deploy to staging/prod
+```
+
+### Planned Features
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Circuit Breaker | Per-SMTP server failure isolation | High |
+| Table Partitioning | Monthly partitions for emails/events tables | High |
+| Redis Cluster | Multi-node Redis for production | Medium |
+| MFA Support | Multi-factor authentication for dashboard | Medium |
+| Real-time Updates | WebSocket for dashboard live updates | Medium |
+| Email Preview | Render email HTML in dashboard | Low |
+| Data Archival | Move old data to cold storage (S3/GCS) | Low |
+| Load Testing | k6 scripts for performance validation | Medium |
+| Chaos Testing | Redis/PostgreSQL failover testing | Low |
+| E2E Tests | Full integration test suite | High |
+| SMTP Connection Pooling | Reuse SMTP connections for performance | Medium |
+
+### Known Issues
+See [CLAUDE.md](.claude/CLAUDE.md) for known issues identified during code reviews.
+
+---
+
+## License
+
+MIT

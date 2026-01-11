@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mail-queue-config
+  namespace: mail-queue
+  labels:
+    app.kubernetes.io/name: mail-queue
+    app.kubernetes.io/component: configuration
+data:
+  # Node environment
+  NODE_ENV: "production"
+
+  # API Configuration
+  API_PORT: "3000"
+  API_HOST: "0.0.0.0"
+
+  # Logging
+  LOG_LEVEL: "info"
+
+  # Rate Limiting (requests per minute)
+  GLOBAL_RATE_LIMIT: "10000"
+
+  # Worker Configuration
+  WORKER_CONCURRENCY: "10"
+  METRICS_PORT: "9090"
+
+  # JWT Token Expiry
+  JWT_ACCESS_TOKEN_EXPIRY: "15m"
+  JWT_REFRESH_TOKEN_EXPIRY: "7d"
+
+  # Privacy Settings
+  ANONYMIZE_IP_ADDRESSES: "true"
+
+  # OpenTelemetry
+  OTEL_TRACING_ENABLED: "true"
+  OTEL_SERVICE_NAME: "mail-queue"
+
+  # Dashboard Configuration
+  NEXT_PUBLIC_API_URL: "https://api.mail-queue.example.com"

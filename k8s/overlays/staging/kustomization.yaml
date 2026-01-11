@@ -1,0 +1,149 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: mail-queue-staging
+
+namespace: mail-queue-staging
+
+resources:
+  - ../../base
+
+labels:
+  - includeSelectors: false
+    pairs:
+      environment: staging
+
+images:
+  - name: ghcr.io/your-org/mail-queue-api
+    newTag: staging
+  - name: ghcr.io/your-org/mail-queue-worker
+    newTag: staging
+  - name: ghcr.io/your-org/mail-queue-dashboard
+    newTag: staging
+
+patches:
+  # Reduce replicas for staging
+  - target:
+      kind: Deployment
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  - target:
+      kind: Deployment
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  - target:
+      kind: Deployment
+      name: mail-queue-dashboard
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+
+  # Reduce resources for staging
+  - target:
+      kind: Deployment
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+  - target:
+      kind: Deployment
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+
+  # Adjust HPA for staging
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mail-queue-api
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 5
+
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mail-queue-worker
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/maxReplicas
+        value: 10
+
+  # Adjust PDBs for staging
+  - target:
+      kind: PodDisruptionBudget
+      name: mail-queue-api-pdb
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 1
+
+  - target:
+      kind: PodDisruptionBudget
+      name: mail-queue-worker-pdb
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 1
+
+  # Update ingress hosts for staging
+  - target:
+      kind: Ingress
+      name: mail-queue-ingress
+    patch: |
+      - op: replace
+        path: /spec/tls/0/hosts
+        value:
+          - api.staging.mail-queue.example.com
+          - dashboard.staging.mail-queue.example.com
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: mail-queue-staging-tls
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.staging.mail-queue.example.com
+      - op: replace
+        path: /spec/rules/1/host
+        value: dashboard.staging.mail-queue.example.com
+
+# Override ConfigMap for staging
+configMapGenerator:
+  - name: mail-queue-config
+    behavior: merge
+    literals:
+      - NODE_ENV=staging
+      - LOG_LEVEL=debug
+      - GLOBAL_RATE_LIMIT=1000
+      - WORKER_CONCURRENCY=5
+      - NEXT_PUBLIC_API_URL=https://api.staging.mail-queue.example.com

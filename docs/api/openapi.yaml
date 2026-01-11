@@ -1,0 +1,1026 @@
+openapi: 3.1.0
+info:
+  title: Mail Queue API
+  version: 1.0.0
+  description: |
+    Enterprise-scale email orchestration API supporting multi-tenant email delivery,
+    queue management, analytics, and GDPR compliance.
+
+    ## Authentication
+    All API endpoints require authentication via API key or admin token.
+
+    ### API Key Authentication
+    Include your API key in the Authorization header:
+    ```
+    Authorization: Bearer mq_live_xxxxx
+    ```
+
+    ### Admin Authentication
+    For admin-only endpoints, use the admin secret:
+    ```
+    Authorization: Bearer <admin-secret>
+    ```
+
+    ## Rate Limiting
+    API requests are rate-limited at multiple levels:
+    - Global rate limit
+    - Per-API key rate limit
+    - Per-app daily limit
+    - Per-queue rate limit
+
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit`: Maximum requests allowed
+    - `X-RateLimit-Remaining`: Remaining requests in window
+    - `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+  contact:
+    name: Mail Queue Support
+    email: support@mailqueue.example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: /v1
+    description: API Version 1
+
+tags:
+  - name: Emails
+    description: Email sending and management
+  - name: Queues
+    description: Queue configuration and management
+  - name: SMTP Configs
+    description: SMTP provider configuration
+  - name: API Keys
+    description: API key management
+  - name: Suppression
+    description: Email suppression list
+  - name: Analytics
+    description: Email analytics and metrics
+  - name: Scheduled Jobs
+    description: Recurring email schedules
+  - name: GDPR
+    description: GDPR compliance endpoints
+  - name: Webhooks
+    description: Webhook delivery management
+  - name: Health
+    description: Service health checks
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: API key in format `mq_live_xxx` or `mq_test_xxx`
+    AdminAuth:
+      type: http
+      scheme: bearer
+      description: Admin secret token
+
+  schemas:
+    # Common
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid email format
+
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 100
+        limit:
+          type: integer
+          example: 20
+        cursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+
+    # Email
+    Email:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appId:
+          type: string
+          format: uuid
+        queueId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, sent, delivered, bounced, complained, failed]
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        from:
+          type: string
+          format: email
+        subject:
+          type: string
+        messageId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        retryCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateEmailInput:
+      type: object
+      required:
+        - to
+        - subject
+      properties:
+        to:
+          oneOf:
+            - type: string
+              format: email
+            - type: array
+              items:
+                type: string
+                format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        from:
+          type: string
+          format: email
+        replyTo:
+          type: string
+          format: email
+        subject:
+          type: string
+          maxLength: 998
+        html:
+          type: string
+        text:
+          type: string
+        queueId:
+          type: string
+          format: uuid
+        scheduledAt:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        metadata:
+          type: object
+        idempotencyKey:
+          type: string
+
+    BatchEmailInput:
+      type: object
+      required:
+        - emails
+      properties:
+        emails:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/CreateEmailInput'
+
+    # Queue
+    Queue:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+        rateLimit:
+          type: integer
+        maxRetries:
+          type: integer
+        retryDelay:
+          type: array
+          items:
+            type: integer
+        smtpConfigId:
+          type: string
+          format: uuid
+          nullable: true
+        isPaused:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateQueueInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+        rateLimit:
+          type: integer
+          minimum: 1
+          default: 100
+        maxRetries:
+          type: integer
+          minimum: 0
+          maximum: 10
+          default: 3
+        retryDelay:
+          type: array
+          items:
+            type: integer
+          default: [60000, 300000, 900000]
+        smtpConfigId:
+          type: string
+          format: uuid
+
+    QueueStats:
+      type: object
+      properties:
+        queueId:
+          type: string
+          format: uuid
+        waiting:
+          type: integer
+        active:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        delayed:
+          type: integer
+        paused:
+          type: boolean
+
+    # SMTP Config
+    SmtpConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        encryption:
+          type: string
+          enum: [none, tls, starttls]
+        poolSize:
+          type: integer
+        timeoutMs:
+          type: integer
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # API Key
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        keyPrefix:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        rateLimit:
+          type: integer
+        ipAllowlist:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # Suppression
+    SuppressionEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        appId:
+          type: string
+          format: uuid
+        emailAddress:
+          type: string
+          format: email
+        reason:
+          type: string
+          enum: [hard_bounce, soft_bounce, complaint, unsubscribe, manual]
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # Analytics
+    AnalyticsOverview:
+      type: object
+      properties:
+        period:
+          type: string
+        sent:
+          type: integer
+        delivered:
+          type: integer
+        opened:
+          type: integer
+        clicked:
+          type: integer
+        bounced:
+          type: integer
+        complained:
+          type: integer
+        deliveryRate:
+          type: number
+          format: float
+        openRate:
+          type: number
+          format: float
+        clickRate:
+          type: number
+          format: float
+
+    # Health
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        components:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+            redis:
+              type: string
+              enum: [healthy, unhealthy]
+            smtp:
+              type: string
+              enum: [healthy, unhealthy, unknown]
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  # Emails
+  /emails:
+    post:
+      summary: Send single email
+      operationId: createEmail
+      tags: [Emails]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailInput'
+            example:
+              to: user@example.com
+              subject: Welcome to our service
+              html: <h1>Welcome!</h1><p>Thanks for signing up.</p>
+              queueId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '201':
+          description: Email queued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Email'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    get:
+      summary: List emails
+      operationId: listEmails
+      tags: [Emails]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, processing, sent, delivered, bounced, complained, failed]
+        - name: queueId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of emails
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Email'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /emails/batch:
+    post:
+      summary: Send batch emails
+      operationId: createBatchEmails
+      tags: [Emails]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchEmailInput'
+      responses:
+        '201':
+          description: Batch queued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      queued:
+                        type: integer
+                      failed:
+                        type: integer
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            status:
+                              type: string
+                            error:
+                              type: string
+                              nullable: true
+
+  /emails/{id}:
+    get:
+      summary: Get email by ID
+      operationId: getEmail
+      tags: [Emails]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Email details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Email'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Cancel scheduled email
+      operationId: cancelEmail
+      tags: [Emails]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Email cancelled
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /emails/{id}/events:
+    get:
+      summary: Get email events
+      operationId: getEmailEvents
+      tags: [Emails]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Email events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        eventType:
+                          type: string
+                        eventData:
+                          type: object
+                        createdAt:
+                          type: string
+                          format: date-time
+
+  /emails/{id}/retry:
+    post:
+      summary: Retry failed email
+      operationId: retryEmail
+      tags: [Emails]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Email requeued
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Queues
+  /queues:
+    post:
+      summary: Create queue
+      operationId: createQueue
+      tags: [Queues]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQueueInput'
+      responses:
+        '201':
+          description: Queue created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Queue'
+
+    get:
+      summary: List queues
+      operationId: listQueues
+      tags: [Queues]
+      responses:
+        '200':
+          description: List of queues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Queue'
+
+  /queues/{id}:
+    get:
+      summary: Get queue
+      operationId: getQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Queue'
+
+    patch:
+      summary: Update queue
+      operationId: updateQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQueueInput'
+      responses:
+        '200':
+          description: Queue updated
+
+    delete:
+      summary: Delete queue
+      operationId: deleteQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Queue deleted
+
+  /queues/{id}/stats:
+    get:
+      summary: Get queue statistics
+      operationId: getQueueStats
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/QueueStats'
+
+  /queues/{id}/pause:
+    post:
+      summary: Pause queue
+      operationId: pauseQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue paused
+
+  /queues/{id}/resume:
+    post:
+      summary: Resume queue
+      operationId: resumeQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue resumed
+
+  /queues/{id}/drain:
+    post:
+      summary: Drain queue
+      operationId: drainQueue
+      tags: [Queues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue drained
+
+  # Analytics
+  /analytics/overview:
+    get:
+      summary: Get analytics overview
+      operationId: getAnalyticsOverview
+      tags: [Analytics]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+            default: 24h
+      responses:
+        '200':
+          description: Analytics overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/AnalyticsOverview'
+
+  /analytics/delivery:
+    get:
+      summary: Get delivery analytics
+      operationId: getDeliveryAnalytics
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Delivery analytics
+
+  /analytics/engagement:
+    get:
+      summary: Get engagement analytics
+      operationId: getEngagementAnalytics
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Engagement analytics
+
+  /analytics/bounces:
+    get:
+      summary: Get bounce analytics
+      operationId: getBounceAnalytics
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Bounce analytics
+
+  /analytics/reputation:
+    get:
+      summary: Get sender reputation
+      operationId: getReputation
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Sender reputation data
+
+  # Health
+  /health:
+    get:
+      summary: Basic health check
+      operationId: healthCheck
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /health/detailed:
+    get:
+      summary: Detailed health check
+      operationId: healthCheckDetailed
+      tags: [Health]
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
