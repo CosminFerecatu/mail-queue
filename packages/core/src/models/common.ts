@@ -143,6 +143,9 @@ export const UserSchema = z.object({
 
 export type User = z.infer<typeof UserSchema>;
 
+// Placeholder for future sensitive field omissions (e.g., passwordHash, mfaSecret).
+// Similar to SmtpConfigResponseSchema.omit({ password: true }), this pattern allows
+// easy addition of fields to omit from API responses without changing the type structure.
 export const UserResponseSchema = UserSchema.omit({});
 
 export type UserResponse = z.infer<typeof UserResponseSchema>;

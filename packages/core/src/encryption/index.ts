@@ -8,6 +8,7 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16; // 128 bits
 const AUTH_TAG_LENGTH = 16; // 128 bits
 const SALT_LENGTH = 32; // 256 bits
+const DEFAULT_API_KEY_PREFIX = 'mq_live';
 
 /**
  * Encrypted data format
@@ -173,7 +174,7 @@ export function generateSecret(length = 32): string {
  * Generate a prefixed API key
  * Format: prefix_randomSecret
  */
-export function generateApiKey(prefix = 'mq_live'): {
+export function generateApiKey(prefix = DEFAULT_API_KEY_PREFIX): {
   key: string;
   prefix: string;
 } {
