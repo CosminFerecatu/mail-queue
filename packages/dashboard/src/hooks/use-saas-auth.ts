@@ -2,6 +2,11 @@
 
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import {
+  hasPermission as checkPermission,
+  isAtLeastRole as checkRole,
+  type Role,
+} from '@/lib/permissions';
 
 export interface SaaSUser {
   id: string;
@@ -39,70 +44,13 @@ export function useSaaSAuth() {
   // Check if user has a specific permission based on role
   const hasPermission = (permission: string): boolean => {
     if (!account) return false;
-
-    const rolePermissions: Record<string, string[]> = {
-      owner: [
-        'apps:read',
-        'apps:write',
-        'apps:delete',
-        'queues:read',
-        'queues:write',
-        'queues:delete',
-        'emails:read',
-        'emails:write',
-        'emails:delete',
-        'analytics:read',
-        'api_keys:read',
-        'api_keys:write',
-        'team:read',
-        'team:write',
-        'settings:read',
-        'settings:write',
-        'billing:read',
-        'billing:write',
-      ],
-      admin: [
-        'apps:read',
-        'apps:write',
-        'apps:delete',
-        'queues:read',
-        'queues:write',
-        'queues:delete',
-        'emails:read',
-        'emails:write',
-        'emails:delete',
-        'analytics:read',
-        'api_keys:read',
-        'api_keys:write',
-        'team:read',
-        'team:write',
-        'settings:read',
-        'settings:write',
-      ],
-      editor: [
-        'apps:read',
-        'queues:read',
-        'queues:write',
-        'emails:read',
-        'emails:write',
-        'analytics:read',
-        'api_keys:read',
-      ],
-      viewer: ['apps:read', 'queues:read', 'emails:read', 'analytics:read'],
-    };
-
-    return rolePermissions[account.role]?.includes(permission) ?? false;
+    return checkPermission(account.role, permission);
   };
 
   // Check if user is at least a certain role level
-  const isAtLeastRole = (requiredRole: 'owner' | 'admin' | 'editor' | 'viewer'): boolean => {
+  const isAtLeastRole = (requiredRole: Role): boolean => {
     if (!account) return false;
-
-    const roleHierarchy = ['viewer', 'editor', 'admin', 'owner'];
-    const userRoleIndex = roleHierarchy.indexOf(account.role);
-    const requiredRoleIndex = roleHierarchy.indexOf(requiredRole);
-
-    return userRoleIndex >= requiredRoleIndex;
+    return checkRole(account.role, requiredRole);
   };
 
   // Login with email/password

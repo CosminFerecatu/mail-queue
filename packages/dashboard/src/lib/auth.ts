@@ -2,6 +2,18 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import type { NextAuthConfig } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
+
+// JWT Payload interface for type-safe token handling
+interface JWTPayload extends JWT {
+  id?: string;
+  accountId?: string;
+  accountName?: string;
+  accountPlan?: 'free' | 'pro' | 'enterprise';
+  accountRole?: 'owner' | 'admin' | 'editor' | 'viewer';
+  accessToken?: string;
+  selectedAppId?: string;
+}
 
 // Extended session types
 declare module 'next-auth' {
@@ -138,7 +150,7 @@ export const authConfig: NextAuthConfig = {
       return true;
     },
     async jwt({ token, user, trigger, session }) {
-      const t = token as any;
+      const t = token as JWTPayload;
       // Initial sign in
       if (user) {
         t.id = user.id;
@@ -159,8 +171,8 @@ export const authConfig: NextAuthConfig = {
       return token;
     },
     async session({ session, token }) {
-      const t = token as any;
-      session.user.id = t.id;
+      const t = token as JWTPayload;
+      session.user.id = t.id ?? '';
 
       if (t.accountId) {
         session.account = {

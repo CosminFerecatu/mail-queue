@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
 import { useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { CACHE_TIMES } from '@/lib/constants';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -11,8 +12,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 5 * 60 * 1000, // 5 minutes - reduces refetches on navigation
-            gcTime: 10 * 60 * 1000, // Keep unused data in cache for 10 minutes
+            staleTime: CACHE_TIMES.QUERY_STALE_MS,
+            gcTime: CACHE_TIMES.QUERY_GC_MS,
             refetchOnWindowFocus: false,
           },
         },

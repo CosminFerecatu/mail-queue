@@ -1,4 +1,6 @@
 import { getSession } from 'next-auth/react';
+import { storage } from '@/lib/storage';
+import { CACHE_TIMES } from '@/lib/constants';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3000';
 
@@ -23,7 +25,6 @@ class ApiError extends Error {
 let cachedToken: string | null = null;
 let tokenPromise: Promise<string | null> | null = null;
 let tokenExpiry = 0;
-const TOKEN_CACHE_MS = 30 * 1000; // Cache token for 30 seconds
 
 async function getToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
@@ -45,15 +46,15 @@ async function getToken(): Promise<string | null> {
       const session = await getSession();
       if (session?.accessToken) {
         cachedToken = session.accessToken;
-        tokenExpiry = Date.now() + TOKEN_CACHE_MS;
+        tokenExpiry = Date.now() + CACHE_TIMES.TOKEN_MS;
         return cachedToken;
       }
 
       // Fallback to legacy localStorage token for admin users
-      const localToken = localStorage.getItem('mq_token');
+      const localToken = storage.getToken();
       if (localToken) {
         cachedToken = localToken;
-        tokenExpiry = Date.now() + TOKEN_CACHE_MS;
+        tokenExpiry = Date.now() + CACHE_TIMES.TOKEN_MS;
       }
       return localToken;
     } finally {
@@ -113,12 +114,12 @@ export async function login(email: string, password: string) {
     method: 'POST',
     body: { email, password },
   });
-  localStorage.setItem('mq_token', response.data.token);
+  storage.setToken(response.data.token);
   return response.data;
 }
 
 export async function logout() {
-  localStorage.removeItem('mq_token');
+  storage.removeToken();
   clearTokenCache();
 }
 

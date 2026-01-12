@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getApps, type App } from '@/lib/api';
+import { storage } from '@/lib/storage';
 
 interface AppContextValue {
   selectedAppId: string | null;
@@ -14,8 +15,6 @@ interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
-
-const SELECTED_APP_KEY = 'mq_selected_app';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedAppId, setSelectedAppIdState] = useState<string | null>(null);
@@ -34,10 +33,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const apps = appsResponse?.data ?? [];
 
-  // Initialize selected app from localStorage
+  // Initialize selected app from storage
   useEffect(() => {
-    if (typeof window !== 'undefined' && !initialized) {
-      const stored = localStorage.getItem(SELECTED_APP_KEY);
+    if (!initialized) {
+      const stored = storage.getSelectedApp();
       if (stored) {
         setSelectedAppIdState(stored);
       }
@@ -65,12 +64,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setSelectedAppId = useCallback((appId: string | null) => {
     setSelectedAppIdState(appId);
-    if (typeof window !== 'undefined') {
-      if (appId) {
-        localStorage.setItem(SELECTED_APP_KEY, appId);
-      } else {
-        localStorage.removeItem(SELECTED_APP_KEY);
-      }
+    if (appId) {
+      storage.setSelectedApp(appId);
+    } else {
+      storage.removeSelectedApp();
     }
   }, []);
 
