@@ -1,73 +1,24 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CreateAppSchema, UpdateAppSchema } from '@mail-queue/core';
 import {
   createApp,
-  getAppById,
   getApps,
   getAppsByAccountId,
   updateApp,
   deleteApp,
   regenerateWebhookSecret,
+  formatAppResponse,
 } from '../services/app.service.js';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyAppOwnership } from '../middleware/ownership.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 import { canCreateApp } from '../services/account.service.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
 });
-
-// Helper to verify app ownership for SaaS users
-async function verifyAppOwnership(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  appId: string
-): Promise<{ app: Awaited<ReturnType<typeof getAppById>>; authorized: boolean }> {
-  const appData = await getAppById(appId);
-
-  if (!appData) {
-    reply.status(404).send({
-      success: false,
-      error: {
-        code: 'NOT_FOUND',
-        message: 'App not found',
-      },
-    });
-    return { app: null, authorized: false };
-  }
-
-  // System admin can access any app
-  if (request.isAdmin) {
-    return { app: appData, authorized: true };
-  }
-
-  // SaaS users must own the app through their account
-  const accountId = request.accountId;
-  if (accountId) {
-    if (appData.accountId !== accountId) {
-      reply.status(403).send({
-        success: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this app',
-        },
-      });
-      return { app: appData, authorized: false };
-    }
-    return { app: appData, authorized: true };
-  }
-
-  // No accountId and not admin - unauthorized
-  reply.status(401).send({
-    success: false,
-    error: {
-      code: 'UNAUTHORIZED',
-      message: 'Authentication required',
-    },
-  });
-  return { app: appData, authorized: false };
-}
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -94,7 +45,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: result.error.issues,
         },
@@ -109,7 +60,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({
           success: false,
           error: {
-            code: 'LIMIT_EXCEEDED',
+            code: ErrorCodes.LIMIT_EXCEEDED,
             message: `App limit reached (${limitCheck.current}/${limitCheck.max}). Upgrade your plan to create more apps.`,
             upgrade: true,
           },
@@ -125,19 +76,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
 
       const responseBody = {
         success: true,
-        data: {
-          id: newApp.id,
-          name: newApp.name,
-          description: newApp.description,
-          isActive: newApp.isActive,
-          sandboxMode: newApp.sandboxMode,
-          webhookUrl: newApp.webhookUrl,
-          dailyLimit: newApp.dailyLimit,
-          monthlyLimit: newApp.monthlyLimit,
-          settings: newApp.settings,
-          createdAt: newApp.createdAt,
-          updatedAt: newApp.updatedAt,
-        },
+        data: formatAppResponse(newApp),
       };
 
       // Cache response for idempotency
@@ -158,7 +97,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -173,19 +112,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       const appList = await getAppsByAccountId(accountId);
       return {
         success: true,
-        data: appList.map((a) => ({
-          id: a.id,
-          name: a.name,
-          description: a.description,
-          isActive: a.isActive,
-          sandboxMode: a.sandboxMode,
-          webhookUrl: a.webhookUrl,
-          dailyLimit: a.dailyLimit,
-          monthlyLimit: a.monthlyLimit,
-          settings: a.settings,
-          createdAt: a.createdAt,
-          updatedAt: a.updatedAt,
-        })),
+        data: appList.map(formatAppResponse),
         cursor: null,
         hasMore: false,
       };
@@ -196,19 +123,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: result.apps.map((a) => ({
-        id: a.id,
-        name: a.name,
-        description: a.description,
-        isActive: a.isActive,
-        sandboxMode: a.sandboxMode,
-        webhookUrl: a.webhookUrl,
-        dailyLimit: a.dailyLimit,
-        monthlyLimit: a.monthlyLimit,
-        settings: a.settings,
-        createdAt: a.createdAt,
-        updatedAt: a.updatedAt,
-      })),
+      data: result.apps.map(formatAppResponse),
       cursor: result.cursor,
       hasMore: result.hasMore,
     };
@@ -222,7 +137,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -230,28 +145,16 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Verify ownership for SaaS users
-    const { app: appData, authorized } = await verifyAppOwnership(
+    const { resource: appData, authorized } = await verifyAppOwnership(
       request,
       reply,
       paramsResult.data.id
     );
-    if (!authorized) return;
+    if (!authorized || !appData) return;
 
     return {
       success: true,
-      data: {
-        id: appData?.id,
-        name: appData?.name,
-        description: appData?.description,
-        isActive: appData?.isActive,
-        sandboxMode: appData?.sandboxMode,
-        webhookUrl: appData?.webhookUrl,
-        dailyLimit: appData?.dailyLimit,
-        monthlyLimit: appData?.monthlyLimit,
-        settings: appData?.settings,
-        createdAt: appData?.createdAt,
-        updatedAt: appData?.updatedAt,
-      },
+      data: formatAppResponse(appData),
     };
   });
 
@@ -263,7 +166,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -280,7 +183,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: bodyResult.error.issues,
         },
@@ -293,7 +196,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'App not found',
         },
       });
@@ -301,19 +204,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: {
-        id: updated.id,
-        name: updated.name,
-        description: updated.description,
-        isActive: updated.isActive,
-        sandboxMode: updated.sandboxMode,
-        webhookUrl: updated.webhookUrl,
-        dailyLimit: updated.dailyLimit,
-        monthlyLimit: updated.monthlyLimit,
-        settings: updated.settings,
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-      },
+      data: formatAppResponse(updated),
     };
   });
 
@@ -325,7 +216,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -342,7 +233,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'App not found',
         },
       });
@@ -360,7 +251,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -377,7 +268,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'App not found or webhook URL not configured',
         },
       });

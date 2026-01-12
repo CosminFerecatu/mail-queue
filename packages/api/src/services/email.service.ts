@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, or, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { getDatabase, emails, queues, emailEvents, suppressionList, apps } from '@mail-queue/db';
 import {
   type CreateEmailInput,
@@ -19,7 +19,8 @@ import {
 import { addEmailJob, addDelayedEmailJob } from '../lib/queue.js';
 import { logger } from '../lib/logger.js';
 import { recordEmailQueued } from '../lib/metrics.js';
-import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+import { buildPaginationResult } from '../lib/cursor.js';
+import { addPaginationConditions } from '../lib/pagination.js';
 import { randomUUID } from 'node:crypto';
 
 export interface CreateEmailOptions {
@@ -353,7 +354,7 @@ export async function getEmailsByAppId(
   const db = getDatabase();
   const { limit = 50, cursor, status, queueId } = options;
 
-  const conditions = [eq(emails.appId, appId)];
+  const conditions: ReturnType<typeof eq>[] = [eq(emails.appId, appId)];
 
   if (status) {
     conditions.push(eq(emails.status, status));
@@ -364,18 +365,7 @@ export async function getEmailsByAppId(
   }
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    // For descending order: get items where (createdAt < cursorCreatedAt) OR (createdAt = cursorCreatedAt AND id < cursorId)
-    const paginationCondition = or(
-      lt(emails.createdAt, cursorDate),
-      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, emails.createdAt, emails.id);
 
   const whereClause = and(...conditions);
 
@@ -456,17 +446,7 @@ export async function getAllEmails(options: GetEmailsOptions = {}): Promise<Emai
   }
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(emails.createdAt, cursorDate),
-      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, emails.createdAt, emails.id);
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -562,17 +542,7 @@ export async function getEmailsByAccountId(
   }
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(emails.createdAt, cursorDate),
-      and(eq(emails.createdAt, cursorDate), lt(emails.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, emails.createdAt, emails.id);
 
   const whereClause = and(...conditions);
 

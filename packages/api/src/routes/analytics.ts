@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
   getAnalyticsOverview,
@@ -9,36 +9,9 @@ import {
   getGlobalAnalyticsOverview,
 } from '../services/analytics.service.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getAppById, getAppsByAccountId } from '../services/app.service.js';
-
-// Helper to verify SaaS user owns the app they're querying
-async function verifyAppAccess(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  appId: string
-): Promise<boolean> {
-  // System admin can access any app
-  if (request.isAdmin) return true;
-
-  // SaaS users must own the app through their account
-  const accountId = request.accountId;
-  if (accountId) {
-    const app = await getAppById(appId);
-    if (!app || app.accountId !== accountId) {
-      reply.status(403).send({
-        success: false,
-        error: {
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this app',
-        },
-      });
-      return false;
-    }
-    return true;
-  }
-
-  return true; // API key users already have appId set
-}
+import { verifyAppAccess } from '../middleware/ownership.js';
+import { getAppsByAccountId } from '../services/app.service.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 // Default time range: last 24 hours
 function getDefaultTimeRange(): { from: Date; to: Date } {
@@ -64,7 +37,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -113,7 +86,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -153,7 +126,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -183,7 +156,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -211,7 +184,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -241,7 +214,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -269,7 +242,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -299,7 +272,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -343,7 +316,7 @@ export const analyticsRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });

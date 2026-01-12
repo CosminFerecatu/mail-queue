@@ -12,11 +12,13 @@ import {
   pauseQueue,
   resumeQueue,
   getQueueStats,
+  formatQueueResponse,
 } from '../services/queue.service.js';
 import { requireAuth } from '../middleware/auth.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 import { canCreateQueue } from '../services/account.service.js';
 import { getAppById } from '../services/app.service.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -46,7 +48,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: result.error.issues,
         },
@@ -60,7 +62,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'appId is required',
         },
       });
@@ -71,7 +73,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(403).send({
         success: false,
         error: {
-          code: 'FORBIDDEN',
+          code: ErrorCodes.FORBIDDEN,
           message: 'Cannot create queue for another app',
         },
       });
@@ -86,7 +88,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({
           success: false,
           error: {
-            code: 'FORBIDDEN',
+            code: ErrorCodes.FORBIDDEN,
             message: 'Cannot create queue for an app you do not own',
           },
         });
@@ -97,7 +99,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({
           success: false,
           error: {
-            code: 'LIMIT_EXCEEDED',
+            code: ErrorCodes.LIMIT_EXCEEDED,
             message: `Queue limit reached for this app (${limitCheck.current}/${limitCheck.max}). Upgrade your plan to create more queues.`,
             upgrade: true,
           },
@@ -110,19 +112,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
       const responseBody = {
         success: true,
-        data: {
-          id: queue.id,
-          name: queue.name,
-          priority: queue.priority,
-          rateLimit: queue.rateLimit,
-          maxRetries: queue.maxRetries,
-          retryDelay: queue.retryDelay,
-          smtpConfigId: queue.smtpConfigId,
-          isPaused: queue.isPaused,
-          settings: queue.settings,
-          createdAt: queue.createdAt,
-          updatedAt: queue.updatedAt,
-        },
+        data: formatQueueResponse(queue),
       };
 
       // Cache response for idempotency
@@ -134,7 +124,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'INVALID_SMTP_CONFIG',
+            code: ErrorCodes.INVALID_SMTP_CONFIG,
             message: error.message,
           },
         });
@@ -149,7 +139,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(409).send({
           success: false,
           error: {
-            code: 'DUPLICATE_QUEUE',
+            code: ErrorCodes.DUPLICATE_QUEUE,
             message: 'A queue with this name already exists for this app',
           },
         });
@@ -167,7 +157,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -184,20 +174,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         success: true,
-        data: result.queues.map((q) => ({
-          id: q.id,
-          appId: q.appId,
-          name: q.name,
-          priority: q.priority,
-          rateLimit: q.rateLimit,
-          maxRetries: q.maxRetries,
-          retryDelay: q.retryDelay,
-          smtpConfigId: q.smtpConfigId,
-          isPaused: q.isPaused,
-          settings: q.settings,
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt,
-        })),
+        data: result.queues.map(formatQueueResponse),
         cursor: result.cursor,
         hasMore: result.hasMore,
       };
@@ -208,7 +185,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -220,20 +197,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         success: true,
-        data: result.queues.map((q) => ({
-          id: q.id,
-          appId: q.appId,
-          name: q.name,
-          priority: q.priority,
-          rateLimit: q.rateLimit,
-          maxRetries: q.maxRetries,
-          retryDelay: q.retryDelay,
-          smtpConfigId: q.smtpConfigId,
-          isPaused: q.isPaused,
-          settings: q.settings,
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt,
-        })),
+        data: result.queues.map(formatQueueResponse),
         cursor: result.cursor,
         hasMore: result.hasMore,
       };
@@ -244,20 +208,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: result.queues.map((q) => ({
-        id: q.id,
-        appId: q.appId,
-        name: q.name,
-        priority: q.priority,
-        rateLimit: q.rateLimit,
-        maxRetries: q.maxRetries,
-        retryDelay: q.retryDelay,
-        smtpConfigId: q.smtpConfigId,
-        isPaused: q.isPaused,
-        settings: q.settings,
-        createdAt: q.createdAt,
-        updatedAt: q.updatedAt,
-      })),
+      data: result.queues.map(formatQueueResponse),
       cursor: result.cursor,
       hasMore: result.hasMore,
     };
@@ -271,7 +222,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -288,7 +239,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Queue not found',
         },
       });
@@ -296,20 +247,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: {
-        id: queue.id,
-        appId: queue.appId,
-        name: queue.name,
-        priority: queue.priority,
-        rateLimit: queue.rateLimit,
-        maxRetries: queue.maxRetries,
-        retryDelay: queue.retryDelay,
-        smtpConfigId: queue.smtpConfigId,
-        isPaused: queue.isPaused,
-        settings: queue.settings,
-        createdAt: queue.createdAt,
-        updatedAt: queue.updatedAt,
-      },
+      data: formatQueueResponse(queue),
     };
   });
 
@@ -321,7 +259,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -334,7 +272,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: bodyResult.error.issues,
         },
@@ -353,7 +291,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({
           success: false,
           error: {
-            code: 'NOT_FOUND',
+            code: ErrorCodes.NOT_FOUND,
             message: 'Queue not found',
           },
         });
@@ -361,27 +299,14 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         success: true,
-        data: {
-          id: queue.id,
-          appId: queue.appId,
-          name: queue.name,
-          priority: queue.priority,
-          rateLimit: queue.rateLimit,
-          maxRetries: queue.maxRetries,
-          retryDelay: queue.retryDelay,
-          smtpConfigId: queue.smtpConfigId,
-          isPaused: queue.isPaused,
-          settings: queue.settings,
-          createdAt: queue.createdAt,
-          updatedAt: queue.updatedAt,
-        },
+        data: formatQueueResponse(queue),
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes('SMTP configuration')) {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'INVALID_SMTP_CONFIG',
+            code: ErrorCodes.INVALID_SMTP_CONFIG,
             message: error.message,
           },
         });
@@ -398,7 +323,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -415,7 +340,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Queue not found',
         },
       });
@@ -432,7 +357,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -449,7 +374,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Queue not found',
         },
       });
@@ -479,7 +404,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -496,7 +421,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Queue not found',
         },
       });
@@ -526,7 +451,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid queue ID',
           details: paramsResult.error.issues,
         },
@@ -543,7 +468,7 @@ export async function queueRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Queue not found',
         },
       });

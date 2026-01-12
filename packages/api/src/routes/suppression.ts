@@ -12,6 +12,7 @@ import {
 import { logAuditEvent, AuditActions } from '../middleware/audit.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
 import { getAppsByAccountId } from '../services/app.service.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 const SuppressionReasonSchema = z.enum([
   'hard_bounce',
@@ -67,7 +68,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -79,7 +80,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -120,7 +121,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -132,7 +133,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email address',
           details: paramsResult.error.issues,
         },
@@ -168,7 +169,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -184,7 +185,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: bodyResult.error.issues,
         },
@@ -228,7 +229,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -240,7 +241,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: bodyResult.error.issues,
         },
@@ -275,7 +276,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -287,7 +288,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email address',
           details: paramsResult.error.issues,
         },
@@ -303,7 +304,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'Email not found in suppression list',
         },
       });
@@ -330,7 +331,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -419,7 +420,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -431,7 +432,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'CSV data is required in the "csv" field',
         },
       });
@@ -442,7 +443,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'CSV must have a header row and at least one data row',
         },
       });
@@ -461,7 +462,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'CSV must have an "email_address" column',
         },
       });
@@ -509,7 +510,7 @@ export const suppressionRoutes: FastifyPluginAsync = async (app: FastifyInstance
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'No valid entries found in CSV',
           details: errors,
         },

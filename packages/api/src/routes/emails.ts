@@ -14,9 +14,11 @@ import {
 } from '../services/email.service.js';
 import { getQueueByName } from '../services/queue.service.js';
 import { requireScope, requireAuth } from '../middleware/auth.js';
+import { requireApiKeyAuth } from '../middleware/app-auth.js';
 import { getRateLimiter } from '../lib/rate-limiter.js';
 import { recordRateLimitHit } from '../lib/metrics.js';
 import { config } from '../config.js';
+import { ErrorCodes } from '../lib/error-codes.js';
 
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -41,7 +43,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -54,7 +56,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
+            code: ErrorCodes.VALIDATION_ERROR,
             message: 'Invalid request body',
             details: parseResult.error.issues.map((i) => ({
               path: i.path.join('.'),
@@ -80,7 +82,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
             return reply.status(503).send({
               success: false,
               error: {
-                code: 'QUEUE_PAUSED',
+                code: ErrorCodes.QUEUE_PAUSED,
                 message: `Queue "${input.queue}" is paused`,
               },
             });
@@ -107,7 +109,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           return reply.status(429).send({
             success: false,
             error: {
-              code: 'RATE_LIMIT_EXCEEDED',
+              code: ErrorCodes.RATE_LIMIT_EXCEEDED,
               message: 'Rate limit exceeded',
               retryAfter: 60,
             },
@@ -122,7 +124,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         return reply.status(429).send({
           success: false,
           error: {
-            code: 'RATE_LIMIT_EXCEEDED',
+            code: ErrorCodes.RATE_LIMIT_EXCEEDED,
             message: `Rate limit exceeded for ${rateLimitCheck.blockedBy}`,
             retryAfter: Math.ceil((blockedResult.resetAt - Date.now()) / 1000),
           },
@@ -165,7 +167,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -178,7 +180,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
+            code: ErrorCodes.VALIDATION_ERROR,
             message: 'Invalid request body',
             details: parseResult.error.issues.map((i) => ({
               path: i.path.join('.'),
@@ -197,7 +199,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           return reply.status(503).send({
             success: false,
             error: {
-              code: 'QUEUE_PAUSED',
+              code: ErrorCodes.QUEUE_PAUSED,
               message: `Queue "${input.queue}" is paused`,
             },
           });
@@ -235,7 +237,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -268,7 +270,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -315,7 +317,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email ID',
           details: paramsResult.error.issues,
         },
@@ -352,7 +354,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email ID',
           details: paramsResult.error.issues,
         },
@@ -389,7 +391,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email ID',
           details: paramsResult.error.issues,
         },
@@ -420,7 +422,7 @@ export const emailRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid email ID',
           details: paramsResult.error.issues,
         },

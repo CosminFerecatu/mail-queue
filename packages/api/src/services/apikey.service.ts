@@ -1,13 +1,49 @@
 import bcrypt from 'bcrypt';
-import { eq, and, desc, lt, or } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { getDatabase, apiKeys, apps, type ApiKeyRow } from '@mail-queue/db';
 import { type CreateApiKeyInput, type ApiKeyScope, generateApiKey } from '@mail-queue/core';
-import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+import { buildPaginationResult } from '../lib/cursor.js';
+import { addPaginationConditions } from '../lib/pagination.js';
 
 export interface ApiKeyListResult {
   keys: ApiKeyRow[];
   cursor: string | null;
   hasMore: boolean;
+}
+
+/**
+ * Response interface for API key data returned by API endpoints.
+ * Excludes sensitive fields like keyHash.
+ */
+export interface ApiKeyResponse {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  rateLimit: number | null;
+  ipAllowlist: string[] | null;
+  expiresAt: Date | null;
+  isActive: boolean;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+}
+
+/**
+ * Formats an API key row for API response, excluding sensitive fields.
+ */
+export function formatApiKeyResponse(key: ApiKeyRow): ApiKeyResponse {
+  return {
+    id: key.id,
+    name: key.name,
+    keyPrefix: key.keyPrefix,
+    scopes: key.scopes as string[],
+    rateLimit: key.rateLimit,
+    ipAllowlist: key.ipAllowlist as string[] | null,
+    expiresAt: key.expiresAt,
+    isActive: key.isActive,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+  };
 }
 
 const BCRYPT_ROUNDS = 12;
@@ -75,23 +111,13 @@ export async function getApiKeysByAppId(
   const db = getDatabase();
   const { limit = 50, cursor, isActive } = options;
 
-  const conditions = [eq(apiKeys.appId, appId)];
+  const conditions: ReturnType<typeof eq>[] = [eq(apiKeys.appId, appId)];
   if (isActive !== undefined) {
     conditions.push(eq(apiKeys.isActive, isActive));
   }
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(apiKeys.createdAt, cursorDate),
-      and(eq(apiKeys.createdAt, cursorDate), lt(apiKeys.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, apiKeys.createdAt, apiKeys.id);
 
   // Fetch limit + 1 to determine if there are more results
   const keyList = await db
@@ -256,7 +282,10 @@ export function checkIpAllowlist(apiKey: ApiKeyRow, clientIp: string): boolean {
     return true; // No restriction
   }
 
-  // Simple exact match for now
-  // TODO: Add CIDR support
+  // TODO(enhancement): Add CIDR notation support for IP allowlist
+  // Currently only exact IP matches are supported.
+  // CIDR support would allow entries like "192.168.1.0/24" or "10.0.0.0/8"
+  // Consider using a library like 'ip-cidr' or 'netmask' for implementation.
+  // See: https://github.com/your-org/mail-queue/issues/XXX
   return allowlist.includes(clientIp);
 }

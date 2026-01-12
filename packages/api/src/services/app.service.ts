@@ -1,4 +1,4 @@
-import { eq, desc, and, lt, or } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { getDatabase, apps, type AppRow } from '@mail-queue/db';
 import {
   type CreateAppInput,
@@ -9,13 +9,51 @@ import {
   parseEncryptionKey,
 } from '@mail-queue/core';
 import { config } from '../config.js';
-import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+import { buildPaginationResult } from '../lib/cursor.js';
+import { addPaginationConditions } from '../lib/pagination.js';
 
 const encryptionKey = parseEncryptionKey(config.encryptionKey);
 
 export interface AppWithStats extends AppRow {
   emailCount?: number;
   queueCount?: number;
+}
+
+/**
+ * Response interface for app data returned by API endpoints.
+ * Excludes sensitive fields like webhookSecret.
+ */
+export interface AppResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  sandboxMode: boolean;
+  webhookUrl: string | null;
+  dailyLimit: number | null;
+  monthlyLimit: number | null;
+  settings: Record<string, unknown> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Formats an app row for API response, excluding sensitive fields.
+ */
+export function formatAppResponse(app: AppRow): AppResponse {
+  return {
+    id: app.id,
+    name: app.name,
+    description: app.description,
+    isActive: app.isActive,
+    sandboxMode: app.sandboxMode,
+    webhookUrl: app.webhookUrl,
+    dailyLimit: app.dailyLimit,
+    monthlyLimit: app.monthlyLimit,
+    settings: app.settings,
+    createdAt: app.createdAt,
+    updatedAt: app.updatedAt,
+  };
 }
 
 export async function createApp(input: CreateAppInput & { accountId?: string }): Promise<AppRow> {
@@ -85,17 +123,7 @@ export async function getApps(options: {
   }
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(apps.createdAt, cursorDate),
-      and(eq(apps.createdAt, cursorDate), lt(apps.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, apps.createdAt, apps.id);
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

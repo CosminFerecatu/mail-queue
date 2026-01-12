@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis';
 import { getRedis } from './redis.js';
+import { logger } from './logger.js';
 
 /**
  * Hierarchical Rate Limiter
@@ -179,7 +180,7 @@ export class HierarchicalRateLimiter {
       };
     } catch (error) {
       // On Redis error, allow the request but log the error
-      console.error('Rate limit check failed:', error);
+      logger.error({ error }, 'Rate limit check failed');
       return {
         allowed: true,
         limit,

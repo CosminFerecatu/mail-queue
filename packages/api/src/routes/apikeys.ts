@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CreateApiKeySchema } from '@mail-queue/core';
 import {
@@ -8,47 +8,13 @@ import {
   revokeApiKey,
   deleteApiKey,
   rotateApiKey,
+  formatApiKeyResponse,
 } from '../services/apikey.service.js';
 import { getAppById } from '../services/app.service.js';
 import { requireAuth } from '../middleware/auth.js';
+import { verifyAppAccess } from '../middleware/ownership.js';
 import { handleIdempotentRequest, cacheSuccessResponse } from '../lib/idempotency.js';
-
-// Helper to verify SaaS user owns the app
-async function verifyAppOwnership(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  appId: string
-): Promise<boolean> {
-  // Admin can access any app
-  if (request.isAdmin) return true;
-
-  // SaaS users must own the app through their account
-  const accountId = request.accountId;
-  if (!accountId) {
-    reply.status(401).send({
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required',
-      },
-    });
-    return false;
-  }
-
-  const app = await getAppById(appId);
-  if (!app || app.accountId !== accountId) {
-    reply.status(403).send({
-      success: false,
-      error: {
-        code: 'FORBIDDEN',
-        message: 'You do not have access to this app',
-      },
-    });
-    return false;
-  }
-
-  return true;
-}
+import { ErrorCodes } from '../lib/error-codes.js';
 
 const AppParamsSchema = z.object({
   appId: z.string().uuid(),
@@ -80,7 +46,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -88,7 +54,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Verify ownership for SaaS users
-    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
     if (!hasAccess) return;
 
     // Check for idempotent replay
@@ -102,7 +68,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid request body',
           details: bodyResult.error.issues,
         },
@@ -115,7 +81,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'App not found',
         },
       });
@@ -130,16 +96,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     const responseBody = {
       success: true,
       data: {
-        id: apiKey.id,
-        name: apiKey.name,
+        ...formatApiKeyResponse(apiKey),
         key: plainKey, // Only returned once at creation!
-        keyPrefix: apiKey.keyPrefix,
-        scopes: apiKey.scopes,
-        rateLimit: apiKey.rateLimit,
-        ipAllowlist: apiKey.ipAllowlist,
-        expiresAt: apiKey.expiresAt,
-        isActive: apiKey.isActive,
-        createdAt: apiKey.createdAt,
       },
       warning: 'Store this API key securely. It will not be shown again.',
     };
@@ -158,7 +116,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid app ID',
           details: paramsResult.error.issues,
         },
@@ -166,7 +124,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Verify ownership for SaaS users
-    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
     if (!hasAccess) return;
 
     const queryResult = ListQuerySchema.safeParse(request.query);
@@ -175,7 +133,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -192,18 +150,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: result.keys.map((k) => ({
-        id: k.id,
-        name: k.name,
-        keyPrefix: k.keyPrefix,
-        scopes: k.scopes,
-        rateLimit: k.rateLimit,
-        ipAllowlist: k.ipAllowlist,
-        expiresAt: k.expiresAt,
-        isActive: k.isActive,
-        createdAt: k.createdAt,
-        lastUsedAt: k.lastUsedAt,
-      })),
+      data: result.keys.map(formatApiKeyResponse),
       cursor: result.cursor,
       hasMore: result.hasMore,
     };
@@ -217,7 +164,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid parameters',
           details: paramsResult.error.issues,
         },
@@ -225,7 +172,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Verify ownership for SaaS users
-    const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+    const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
     if (!hasAccess) return;
 
     const key = await getApiKeyById(paramsResult.data.keyId, paramsResult.data.appId);
@@ -234,7 +181,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({
         success: false,
         error: {
-          code: 'NOT_FOUND',
+          code: ErrorCodes.NOT_FOUND,
           message: 'API key not found',
         },
       });
@@ -242,18 +189,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: {
-        id: key.id,
-        name: key.name,
-        keyPrefix: key.keyPrefix,
-        scopes: key.scopes,
-        rateLimit: key.rateLimit,
-        ipAllowlist: key.ipAllowlist,
-        expiresAt: key.expiresAt,
-        isActive: key.isActive,
-        createdAt: key.createdAt,
-        lastUsedAt: key.lastUsedAt,
-      },
+      data: formatApiKeyResponse(key),
     };
   });
 
@@ -268,7 +204,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
+            code: ErrorCodes.VALIDATION_ERROR,
             message: 'Invalid parameters',
             details: paramsResult.error.issues,
           },
@@ -276,7 +212,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Verify ownership for SaaS users
-      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
       if (!hasAccess) return;
 
       const revoked = await revokeApiKey(paramsResult.data.keyId, paramsResult.data.appId);
@@ -285,7 +221,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({
           success: false,
           error: {
-            code: 'NOT_FOUND',
+            code: ErrorCodes.NOT_FOUND,
             message: 'API key not found',
           },
         });
@@ -316,7 +252,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
+            code: ErrorCodes.VALIDATION_ERROR,
             message: 'Invalid parameters',
             details: paramsResult.error.issues,
           },
@@ -324,7 +260,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Verify ownership for SaaS users
-      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
       if (!hasAccess) return;
 
       const deleted = await deleteApiKey(paramsResult.data.keyId, paramsResult.data.appId);
@@ -333,7 +269,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({
           success: false,
           error: {
-            code: 'NOT_FOUND',
+            code: ErrorCodes.NOT_FOUND,
             message: 'API key not found',
           },
         });
@@ -354,7 +290,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({
           success: false,
           error: {
-            code: 'VALIDATION_ERROR',
+            code: ErrorCodes.VALIDATION_ERROR,
             message: 'Invalid parameters',
             details: paramsResult.error.issues,
           },
@@ -362,7 +298,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Verify ownership for SaaS users
-      const hasAccess = await verifyAppOwnership(request, reply, paramsResult.data.appId);
+      const hasAccess = await verifyAppAccess(request, reply, paramsResult.data.appId);
       if (!hasAccess) return;
 
       const result = await rotateApiKey(paramsResult.data.keyId, paramsResult.data.appId);
@@ -371,7 +307,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({
           success: false,
           error: {
-            code: 'NOT_FOUND',
+            code: ErrorCodes.NOT_FOUND,
             message: 'API key not found',
           },
         });
@@ -380,16 +316,8 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return {
         success: true,
         data: {
-          id: result.apiKey.id,
-          name: result.apiKey.name,
+          ...formatApiKeyResponse(result.apiKey),
           key: result.plainKey, // New key, only shown once!
-          keyPrefix: result.apiKey.keyPrefix,
-          scopes: result.apiKey.scopes,
-          rateLimit: result.apiKey.rateLimit,
-          ipAllowlist: result.apiKey.ipAllowlist,
-          expiresAt: result.apiKey.expiresAt,
-          isActive: result.apiKey.isActive,
-          createdAt: result.apiKey.createdAt,
         },
         warning: 'Store this new API key securely. It will not be shown again.',
       };
@@ -405,7 +333,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
+          code: ErrorCodes.UNAUTHORIZED,
           message: 'App authentication required',
         },
       });
@@ -417,7 +345,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ErrorCodes.VALIDATION_ERROR,
           message: 'Invalid query parameters',
           details: queryResult.error.issues,
         },
@@ -434,18 +362,7 @@ export async function apiKeyRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       success: true,
-      data: result.keys.map((k) => ({
-        id: k.id,
-        name: k.name,
-        keyPrefix: k.keyPrefix,
-        scopes: k.scopes,
-        rateLimit: k.rateLimit,
-        ipAllowlist: k.ipAllowlist,
-        expiresAt: k.expiresAt,
-        isActive: k.isActive,
-        createdAt: k.createdAt,
-        lastUsedAt: k.lastUsedAt,
-      })),
+      data: result.keys.map(formatApiKeyResponse),
       cursor: result.cursor,
       hasMore: result.hasMore,
     };

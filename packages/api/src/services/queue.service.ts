@@ -1,13 +1,51 @@
-import { eq, and, desc, lt, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { getDatabase, queues, smtpConfigs, emails, apps, type QueueRow } from '@mail-queue/db';
 import type { CreateQueueInput, UpdateQueueInput } from '@mail-queue/core';
-import { getEmailQueue } from '../lib/queue.js';
-import { parseCursor, buildPaginationResult } from '../lib/cursor.js';
+import { buildPaginationResult } from '../lib/cursor.js';
+import { addPaginationConditions } from '../lib/pagination.js';
 
 export interface QueueListResult {
   queues: QueueRow[];
   cursor: string | null;
   hasMore: boolean;
+}
+
+/**
+ * Response interface for queue data returned by API endpoints.
+ */
+export interface QueueResponse {
+  id: string;
+  appId: string;
+  name: string;
+  priority: number;
+  rateLimit: number | null;
+  maxRetries: number;
+  retryDelay: number[] | null;
+  smtpConfigId: string | null;
+  isPaused: boolean;
+  settings: Record<string, unknown> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Formats a queue row for API response.
+ */
+export function formatQueueResponse(queue: QueueRow): QueueResponse {
+  return {
+    id: queue.id,
+    appId: queue.appId,
+    name: queue.name,
+    priority: queue.priority,
+    rateLimit: queue.rateLimit,
+    maxRetries: queue.maxRetries,
+    retryDelay: queue.retryDelay,
+    smtpConfigId: queue.smtpConfigId,
+    isPaused: queue.isPaused,
+    settings: queue.settings,
+    createdAt: queue.createdAt,
+    updatedAt: queue.updatedAt,
+  };
 }
 
 export async function createQueue(appId: string, input: CreateQueueInput): Promise<QueueRow> {
@@ -83,20 +121,10 @@ export async function getQueuesByAppId(
   const db = getDatabase();
   const { limit = 50, cursor } = options;
 
-  const conditions = [eq(queues.appId, appId)];
+  const conditions: ReturnType<typeof eq>[] = [eq(queues.appId, appId)];
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(queues.createdAt, cursorDate),
-      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, queues.createdAt, queues.id);
 
   // Fetch limit + 1 to determine if there are more results
   const queueList = await db
@@ -129,17 +157,7 @@ export async function getAllQueues(
   const conditions: ReturnType<typeof eq>[] = [];
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(queues.createdAt, cursorDate),
-      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, queues.createdAt, queues.id);
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -187,17 +205,7 @@ export async function getQueuesByAccountId(
   const conditions: ReturnType<typeof eq>[] = [inArray(queues.appId, appIds)];
 
   // Apply cursor-based pagination
-  const cursorData = parseCursor(cursor);
-  if (cursorData) {
-    const cursorDate = new Date(cursorData.c);
-    const paginationCondition = or(
-      lt(queues.createdAt, cursorDate),
-      and(eq(queues.createdAt, cursorDate), lt(queues.id, cursorData.i))
-    );
-    if (paginationCondition) {
-      conditions.push(paginationCondition);
-    }
-  }
+  addPaginationConditions(conditions, cursor, queues.createdAt, queues.id);
 
   // Fetch limit + 1 to determine if there are more results
   const queueList = await db
@@ -368,14 +376,8 @@ export async function getQueueStats(id: string, appId?: string): Promise<QueueSt
     counts[row.status] = row.count;
   }
 
-  // Get BullMQ queue stats
-  const bullQueue = getEmailQueue();
-  const [_waiting, _active, _delayed, _failed] = await Promise.all([
-    bullQueue.getWaitingCount(),
-    bullQueue.getActiveCount(),
-    bullQueue.getDelayedCount(),
-    bullQueue.getFailedCount(),
-  ]);
+  // Note: BullMQ stats were previously fetched here but are not used.
+  // We use database counts for accurate per-queue statistics.
 
   return {
     queueId: queue.id,
