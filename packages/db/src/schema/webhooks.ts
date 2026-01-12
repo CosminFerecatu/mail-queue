@@ -32,6 +32,8 @@ export const webhookDeliveries = pgTable(
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.id, { onDelete: 'cascade' }),
+    // onDelete: 'set null' - Preserve webhook delivery history even if the source email is deleted.
+    // This maintains audit trail for webhook deliveries.
     emailId: uuid('email_id').references(() => emails.id, { onDelete: 'set null' }),
     eventType: text('event_type').notNull(),
     payload: jsonb('payload').notNull().$type<Record<string, unknown>>(),
@@ -41,6 +43,7 @@ export const webhookDeliveries = pgTable(
     nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('webhook_deliveries_app_id_idx').on(table.appId),

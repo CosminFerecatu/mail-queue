@@ -35,6 +35,8 @@ export const gdprRequests = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
 
     // The app context (null for platform-wide requests)
+    // onDelete: 'set null' - Preserve GDPR request history even if app is deleted.
+    // Required for compliance audit trails.
     appId: uuid('app_id').references(() => apps.id, { onDelete: 'set null' }),
 
     // The email address for the data subject

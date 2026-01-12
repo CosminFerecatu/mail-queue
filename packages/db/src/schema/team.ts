@@ -48,6 +48,8 @@ export const teamMemberships = pgTable(
         >
       >(),
     // Invitation tracking
+    // onDelete: 'set null' - Preserve membership even if the inviting user is deleted.
+    // The membership itself remains valid.
     invitedBy: uuid('invited_by').references(() => saasUsers.id, {
       onDelete: 'set null',
     }),

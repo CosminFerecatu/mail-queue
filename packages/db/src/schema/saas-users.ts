@@ -21,6 +21,8 @@ export const saasUsers = pgTable(
     googleId: text('google_id'),
     githubId: text('github_id'),
     // Account ownership
+    // onDelete: 'set null' - Preserve user if their owned account is deleted.
+    // User can create or join another account.
     ownedAccountId: uuid('owned_account_id').references(() => accounts.id, {
       onDelete: 'set null',
     }),

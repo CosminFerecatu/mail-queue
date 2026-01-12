@@ -14,12 +14,19 @@ if (!DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is required');
 }
 
-const ADMIN_EMAIL = process.env['ADMIN_EMAIL'] || 'admin@mailqueue.local';
-const ADMIN_PASSWORD = process.env['ADMIN_PASSWORD'] || 'admin123456';
+const ADMIN_EMAIL = process.env['ADMIN_EMAIL'];
+const ADMIN_PASSWORD = process.env['ADMIN_PASSWORD'];
 const ADMIN_NAME = process.env['ADMIN_NAME'] || 'Admin User';
 
+if (!ADMIN_EMAIL) {
+  throw new Error('ADMIN_EMAIL environment variable is required. Do not use default credentials in production.');
+}
+
+if (!ADMIN_PASSWORD) {
+  throw new Error('ADMIN_PASSWORD environment variable is required. Do not use default credentials in production.');
+}
+
 async function seed() {
-  // console.log('Connecting to database...');
   const client = postgres(DATABASE_URL as string);
   const db = drizzle(client);
 
@@ -32,8 +39,6 @@ async function seed() {
       .limit(1);
 
     if (existingUser) {
-      // console.log(`Admin user already exists: ${ADMIN_EMAIL}`);
-      // console.log('Skipping seed.');
       return;
     }
 
@@ -41,7 +46,6 @@ async function seed() {
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
 
     // Create admin user
-    // const [newUser] = await db
     await db
       .insert(users)
       .values({
@@ -52,17 +56,6 @@ async function seed() {
         isActive: true,
       })
       .returning();
-
-    // console.log('\n===========================================');
-    // console.log('Admin user created successfully!');
-    // console.log('===========================================');
-    // console.log(`Email:    ${ADMIN_EMAIL}`);
-    // console.log(`Password: ${ADMIN_PASSWORD}`);
-    // console.log(`Role:     super_admin`);
-    // console.log(`ID:       ${newUser?.id}`);
-    // console.log('===========================================\n');
-    // console.log('You can now login to the dashboard with these credentials.');
-    // console.log('Make sure to change the password after first login!\n');
   } catch (error) {
     console.error('Seed failed:', error);
     throw error;

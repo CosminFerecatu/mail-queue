@@ -25,11 +25,14 @@ export const suppressionList = pgTable(
     appId: uuid('app_id').references(() => apps.id, { onDelete: 'cascade' }), // null = global
     emailAddress: text('email_address').notNull(),
     reason: suppressionReasonEnum('reason').notNull(),
+    // onDelete: 'set null' - Preserve suppression entry even if the source email is deleted.
+    // The suppression reason remains valid regardless of the original email.
     sourceEmailId: uuid('source_email_id').references(() => emails.id, {
       onDelete: 'set null',
     }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('suppression_list_app_id_email_idx').on(table.appId, table.emailAddress),

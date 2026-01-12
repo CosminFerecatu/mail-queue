@@ -64,6 +64,8 @@ export const queues = pgTable(
     rateLimit: integer('rate_limit'), // emails per minute
     maxRetries: smallint('max_retries').notNull().default(5),
     retryDelay: jsonb('retry_delay').$type<number[]>().default([30, 120, 600, 3600, 86400]),
+    // onDelete: 'set null' - Preserve queue configuration if SMTP config is deleted.
+    // Queue can be reassigned to a different SMTP config later.
     smtpConfigId: uuid('smtp_config_id').references(() => smtpConfigs.id, {
       onDelete: 'set null',
     }),
