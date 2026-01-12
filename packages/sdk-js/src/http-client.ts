@@ -1,5 +1,6 @@
 import type { MailQueueConfig, ApiResponse, ApiErrorResponse } from './types.js';
-import { MailQueueError, NetworkError, TimeoutError, createErrorFromResponse } from './errors.js';
+import { MailQueueError, NetworkError, TimeoutError, RateLimitError, createErrorFromResponse } from './errors.js';
+import { SDK_VERSION } from './version.js';
 
 const DEFAULT_BASE_URL = 'https://api.mailqueue.io';
 const DEFAULT_TIMEOUT = 30000;
@@ -22,6 +23,16 @@ interface RetryConfig {
   initialDelay: number;
   maxDelay: number;
   backoffMultiplier: number;
+}
+
+function isApiResponse<T>(data: unknown): data is ApiResponse<T> {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'success' in data &&
+    (data as Record<string, unknown>).success === true &&
+    'data' in data
+  );
 }
 
 /**
@@ -124,8 +135,13 @@ export class HttpClient {
           throw lastError;
         }
 
-        // Calculate delay with exponential backoff and jitter
-        const delay = this.calculateDelay(attempt);
+        // Honor Retry-After header for rate limit errors
+        let delay: number;
+        if (error instanceof RateLimitError && error.retryAfter) {
+          delay = error.retryAfter * 1000;
+        } else {
+          delay = this.calculateDelay(attempt);
+        }
         await this.sleep(delay);
       }
     }
@@ -169,15 +185,8 @@ export class HttpClient {
         );
       }
 
-      // Return the data directly if it's already the expected shape
-      if (
-        typeof data === 'object' &&
-        data !== null &&
-        'success' in data &&
-        (data as Record<string, unknown>).success &&
-        'data' in data
-      ) {
-        return (data as ApiResponse<T>).data;
+      if (isApiResponse<T>(data)) {
+        return data.data;
       }
 
       return data as T;
@@ -227,7 +236,7 @@ export class HttpClient {
       Authorization: `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'User-Agent': 'mail-queue-sdk-js/0.0.1',
+      'User-Agent': `mail-queue-sdk-js/${SDK_VERSION}`,
       ...this.customHeaders,
       ...options.headers,
     };

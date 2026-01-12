@@ -40,8 +40,7 @@ export class AuthorizationError extends MailQueueError {
  * Error thrown when a requested resource is not found
  */
 export class NotFoundError extends MailQueueError {
-  constructor(resource: string, id?: string) {
-    const message = id ? `${resource} with ID '${id}' not found` : `${resource} not found`;
+  constructor(message = 'Resource not found') {
     super(message, 'NOT_FOUND', 404);
     this.name = 'NotFoundError';
     Object.setPrototypeOf(this, NotFoundError.prototype);

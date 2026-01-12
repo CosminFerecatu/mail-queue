@@ -54,15 +54,16 @@ describe('errors', () => {
   });
 
   describe('NotFoundError', () => {
-    it('should create with resource name', () => {
-      const error = new NotFoundError('Email');
-      expect(error.message).toBe('Email not found');
+    it('should create with default message', () => {
+      const error = new NotFoundError();
+      expect(error.message).toBe('Resource not found');
+      expect(error.code).toBe('NOT_FOUND');
       expect(error.statusCode).toBe(404);
     });
 
-    it('should create with resource name and ID', () => {
-      const error = new NotFoundError('Email', 'email-123');
-      expect(error.message).toBe("Email with ID 'email-123' not found");
+    it('should create with custom message', () => {
+      const error = new NotFoundError('Email with ID email-123 not found');
+      expect(error.message).toBe('Email with ID email-123 not found');
     });
   });
 
