@@ -2,10 +2,12 @@ import type { Job } from 'bullmq';
 import { eq, and } from 'drizzle-orm';
 import { getDatabase, emails, emailEvents, suppressionList } from '@mail-queue/db';
 import { logger } from '../lib/logger.js';
+import { SOFT_BOUNCE_EXPIRATION_DAYS } from '../constants.js';
 
 const bounceLogger = logger.child({ processor: 'bounce' });
 
 export type BounceType = 'hard' | 'soft';
+export type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint';
 
 export interface ProcessBounceJobData {
   emailId: string;
@@ -26,10 +28,71 @@ export interface ProcessComplaintJobData {
 }
 
 /**
+ * Add recipients to the suppression list
+ * Handles both new insertions and updates for existing entries
+ */
+async function addToSuppressionList(
+  appId: string,
+  emailId: string,
+  recipients: string[],
+  reason: SuppressionReason,
+  jobLogger: typeof bounceLogger,
+  expiresAt?: Date
+): Promise<void> {
+  const db = getDatabase();
+
+  for (const recipient of recipients) {
+    const normalizedEmail = recipient.toLowerCase().trim();
+
+    // Check if already in suppression list
+    const [existing] = await db
+      .select({ id: suppressionList.id, reason: suppressionList.reason })
+      .from(suppressionList)
+      .where(
+        and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
+      )
+      .limit(1);
+
+    if (!existing) {
+      // Insert new suppression entry
+      await db.insert(suppressionList).values({
+        appId,
+        emailAddress: normalizedEmail,
+        reason,
+        sourceEmailId: emailId,
+        expiresAt,
+      });
+
+      const logMessage = expiresAt
+        ? `Added ${reason} email to suppression list (expires: ${expiresAt.toISOString()})`
+        : `Added ${reason} email to suppression list`;
+
+      jobLogger.info({ recipient: normalizedEmail, expiresAt }, logMessage);
+    } else if (reason === 'complaint') {
+      // Complaints are more severe - upgrade existing suppression
+      await db
+        .update(suppressionList)
+        .set({
+          reason: 'complaint',
+          sourceEmailId: emailId,
+          expiresAt: null, // Remove expiration for complaints
+        })
+        .where(eq(suppressionList.id, existing.id));
+
+      jobLogger.info(
+        { recipient: normalizedEmail, previousReason: existing.reason },
+        'Upgraded suppression to complaint'
+      );
+    }
+    // For bounces, if already suppressed, keep existing entry
+  }
+}
+
+/**
  * Process a bounce notification
  * - Updates email status to bounced
  * - Records bounce event
- * - Adds hard bounces to suppression list
+ * - Adds bounced recipients to suppression list
  */
 export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<void> {
   const { emailId, appId, bounceType, bounceSubType, bounceMessage, bouncedRecipients, timestamp } =
@@ -69,75 +132,18 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
     createdAt: eventTimestamp,
   });
 
-  // For hard bounces, add recipients to suppression list
+  // Add recipients to suppression list
   if (bounceType === 'hard') {
-    for (const recipient of bouncedRecipients) {
-      const normalizedEmail = recipient.toLowerCase().trim();
-
-      // Check if already in suppression list
-      const [existing] = await db
-        .select({ id: suppressionList.id })
-        .from(suppressionList)
-        .where(
-          and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
-        )
-        .limit(1);
-
-      if (!existing) {
-        await db.insert(suppressionList).values({
-          appId,
-          emailAddress: normalizedEmail,
-          reason: 'hard_bounce',
-          sourceEmailId: emailId,
-        });
-
-        jobLogger.info(
-          { recipient: normalizedEmail },
-          'Added hard bounced email to suppression list'
-        );
-      }
-    }
+    await addToSuppressionList(appId, emailId, bouncedRecipients, 'hard_bounce', jobLogger);
   } else {
-    // For soft bounces, we might add them with an expiration
-    // This is optional and depends on business requirements
-    for (const recipient of bouncedRecipients) {
-      const normalizedEmail = recipient.toLowerCase().trim();
-
-      // Check if already suppressed
-      const [existing] = await db
-        .select({ id: suppressionList.id })
-        .from(suppressionList)
-        .where(
-          and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
-        )
-        .limit(1);
-
-      if (!existing) {
-        // Add soft bounce with 7-day expiration
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7);
-
-        await db.insert(suppressionList).values({
-          appId,
-          emailAddress: normalizedEmail,
-          reason: 'soft_bounce',
-          sourceEmailId: emailId,
-          expiresAt,
-        });
-
-        jobLogger.info(
-          { recipient: normalizedEmail, expiresAt },
-          'Added soft bounced email to suppression list (temporary)'
-        );
-      }
-    }
+    // Soft bounces get temporary suppression
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + SOFT_BOUNCE_EXPIRATION_DAYS);
+    await addToSuppressionList(appId, emailId, bouncedRecipients, 'soft_bounce', jobLogger, expiresAt);
   }
 
   jobLogger.info(
-    {
-      bounceType,
-      recipientCount: bouncedRecipients.length,
-    },
+    { bounceType, recipientCount: bouncedRecipients.length },
     'Bounce notification processed'
   );
 }
@@ -145,7 +151,7 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
 /**
  * Process a complaint notification (spam report)
  * - Records complaint event
- * - Adds complainers to suppression list
+ * - Adds complainers to suppression list (permanent)
  */
 export async function processComplaintJob(job: Job<ProcessComplaintJobData>): Promise<void> {
   const { emailId, appId, complaintType, complainedRecipients, timestamp } = job.data;
@@ -179,46 +185,11 @@ export async function processComplaintJob(job: Job<ProcessComplaintJobData>): Pr
     createdAt: eventTimestamp,
   });
 
-  // Add complainers to suppression list (permanent)
-  for (const recipient of complainedRecipients) {
-    const normalizedEmail = recipient.toLowerCase().trim();
-
-    // Check if already in suppression list
-    const [existing] = await db
-      .select({ id: suppressionList.id })
-      .from(suppressionList)
-      .where(
-        and(eq(suppressionList.appId, appId), eq(suppressionList.emailAddress, normalizedEmail))
-      )
-      .limit(1);
-
-    if (!existing) {
-      await db.insert(suppressionList).values({
-        appId,
-        emailAddress: normalizedEmail,
-        reason: 'complaint',
-        sourceEmailId: emailId,
-      });
-
-      jobLogger.info({ recipient: normalizedEmail }, 'Added complained email to suppression list');
-    } else {
-      // Update existing suppression to complaint (more severe)
-      await db
-        .update(suppressionList)
-        .set({
-          reason: 'complaint',
-          sourceEmailId: emailId,
-          expiresAt: null, // Remove expiration for complaints
-        })
-        .where(eq(suppressionList.id, existing.id));
-    }
-  }
+  // Add complainers to suppression list (permanent, will upgrade existing entries)
+  await addToSuppressionList(appId, emailId, complainedRecipients, 'complaint', jobLogger);
 
   jobLogger.info(
-    {
-      complaintType,
-      recipientCount: complainedRecipients.length,
-    },
+    { complaintType, recipientCount: complainedRecipients.length },
     'Complaint notification processed'
   );
 }
@@ -240,7 +211,6 @@ export function parseDsnMessage(rawMessage: string): {
   bouncedRecipients: string[];
 } | null {
   try {
-    // Enforce input length limit to prevent ReDoS and memory issues
     if (!rawMessage || rawMessage.length === 0) {
       return null;
     }
@@ -293,7 +263,6 @@ export function parseDsnMessage(rawMessage: string): {
     }
 
     // Try to extract email addresses from the message
-    // Limit recipients to prevent memory issues with malformed input
     const emailRegex = /[\w.+-]+@[\w.-]+\.\w+/gi;
     const allMatches = truncatedMessage.match(emailRegex) || [];
     const uniqueRecipients = [...new Set(allMatches)];

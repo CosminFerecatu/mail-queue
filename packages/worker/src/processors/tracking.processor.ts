@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { getDatabase, emails, emailEvents, trackingLinks } from '@mail-queue/db';
 import type { RecordTrackingJobData } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
@@ -32,7 +32,6 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
   const eventTimestamp = new Date(timestamp);
 
   // Anonymize IP address for GDPR compliance if enabled
-  // Convert null to undefined for database compatibility
   const processedIpAddress = config.anonymizeIpAddresses
     ? (anonymizeIpAddress(ipAddress) ?? undefined)
     : ipAddress;
@@ -58,23 +57,18 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
       createdAt: eventTimestamp,
     });
 
-    jobLogger.info(
-      {
-        appId: email.appId,
-        linkUrl,
-      },
-      'Click event recorded'
-    );
+    jobLogger.info({ appId: email.appId, linkUrl }, 'Click event recorded');
   } else if (type === 'open') {
-    // Check if we already have an open event for this email
-    // (to avoid duplicate counts from image re-loading)
+    // Check if this is the first open event for this email
     const [existingOpen] = await db
       .select({ id: emailEvents.id })
       .from(emailEvents)
-      .where(eq(emailEvents.emailId, emailId))
+      .where(and(eq(emailEvents.emailId, emailId), eq(emailEvents.eventType, 'opened')))
       .limit(1);
 
-    // Record open event (allow duplicates for now - could dedupe based on time window)
+    const isFirstOpen = !existingOpen;
+
+    // Record open event
     await db.insert(emailEvents).values({
       emailId,
       eventType: 'opened',
@@ -85,26 +79,6 @@ export async function processTrackingJob(job: Job<RecordTrackingJobData>): Promi
       createdAt: eventTimestamp,
     });
 
-    jobLogger.info(
-      {
-        appId: email.appId,
-        isFirstOpen: !existingOpen,
-      },
-      'Open event recorded'
-    );
+    jobLogger.info({ appId: email.appId, isFirstOpen }, 'Open event recorded');
   }
-}
-
-/**
- * Process open tracking event
- */
-export async function processOpenTrackingJob(job: Job<RecordTrackingJobData>): Promise<void> {
-  return processTrackingJob(job);
-}
-
-/**
- * Process click tracking event
- */
-export async function processClickTrackingJob(job: Job<RecordTrackingJobData>): Promise<void> {
-  return processTrackingJob(job);
 }

@@ -3,6 +3,12 @@ import { eq, and, gte, lte, sql, count } from 'drizzle-orm';
 import { getDatabase, emails, emailEvents, appReputation, apps } from '@mail-queue/db';
 import type { AggregateStatsJobData, UpdateReputationJobData } from '@mail-queue/core';
 import { logger } from '../lib/logger.js';
+import {
+  BOUNCE_RATE_THROTTLE_THRESHOLD,
+  COMPLAINT_RATE_THROTTLE_THRESHOLD,
+  BOUNCE_RATE_SCORE_WEIGHT,
+  COMPLAINT_RATE_SCORE_WEIGHT,
+} from '../constants.js';
 
 /**
  * Process analytics aggregation job
@@ -159,17 +165,19 @@ export async function processReputationUpdateJob(job: Job<UpdateReputationJobDat
   // Calculate reputation score
   // Base score of 100, subtract based on bounce and complaint rates
   let score = 100;
-  score -= bounceRate * 2; // Each 1% bounce = -2 points
-  score -= complaintRate * 20; // Each 1% complaint = -20 points
+  score -= bounceRate * BOUNCE_RATE_SCORE_WEIGHT;
+  score -= complaintRate * COMPLAINT_RATE_SCORE_WEIGHT;
   score = Math.max(0, Math.min(100, score));
 
   // Determine throttling
-  const isThrottled = bounceRate > 10 || complaintRate > 1;
+  const isThrottled =
+    bounceRate > BOUNCE_RATE_THROTTLE_THRESHOLD ||
+    complaintRate > COMPLAINT_RATE_THROTTLE_THRESHOLD;
   let throttleReason: string | null = null;
 
-  if (bounceRate > 10) {
+  if (bounceRate > BOUNCE_RATE_THROTTLE_THRESHOLD) {
     throttleReason = `High bounce rate: ${bounceRate.toFixed(2)}%`;
-  } else if (complaintRate > 1) {
+  } else if (complaintRate > COMPLAINT_RATE_THROTTLE_THRESHOLD) {
     throttleReason = `High complaint rate: ${complaintRate.toFixed(2)}%`;
   }
 

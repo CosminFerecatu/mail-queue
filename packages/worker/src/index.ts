@@ -31,6 +31,34 @@ import {
   setWorkerStatus,
   setActiveJobs,
 } from './lib/metrics.js';
+import {
+  createWorker,
+  createErrorHandler,
+  createFailedHandler,
+  type WorkerConfig,
+} from './lib/worker-factory.js';
+import {
+  EMAIL_RETENTION_COMPLETED_AGE_SECONDS,
+  EMAIL_RETENTION_COMPLETED_COUNT,
+  EMAIL_RETENTION_FAILED_AGE_SECONDS,
+  EMAIL_RETENTION_FAILED_COUNT,
+  WEBHOOK_RETENTION_COMPLETED_AGE_SECONDS,
+  WEBHOOK_RETENTION_COMPLETED_COUNT,
+  WEBHOOK_RETENTION_FAILED_AGE_SECONDS,
+  WEBHOOK_RETENTION_FAILED_COUNT,
+  TRACKING_RETENTION_COMPLETED_AGE_SECONDS,
+  TRACKING_RETENTION_COMPLETED_COUNT,
+  TRACKING_RETENTION_FAILED_AGE_SECONDS,
+  TRACKING_RETENTION_FAILED_COUNT,
+  ANALYTICS_RETENTION_COMPLETED_AGE_SECONDS,
+  ANALYTICS_RETENTION_COMPLETED_COUNT,
+  ANALYTICS_RETENTION_FAILED_AGE_SECONDS,
+  ANALYTICS_RETENTION_FAILED_COUNT,
+  WEBHOOK_WORKER_CONCURRENCY,
+  TRACKING_WORKER_CONCURRENCY,
+  ANALYTICS_WORKER_CONCURRENCY,
+  SCHEDULER_INTERVAL_MS,
+} from './constants.js';
 
 let emailWorker: Worker<SendEmailJobData> | null = null;
 let webhookWorker: Worker<DeliverWebhookJobData> | null = null;
@@ -38,6 +66,19 @@ let trackingWorker: Worker<RecordTrackingJobData> | null = null;
 let analyticsWorker: Worker<AggregateStatsJobData | UpdateReputationJobData> | null = null;
 let stopScheduler: (() => void) | null = null;
 let isShuttingDown = false;
+
+// Track active jobs count for metrics
+let activeJobsCount = 0;
+
+function incrementActiveJobs(): void {
+  activeJobsCount++;
+  setActiveJobs(activeJobsCount);
+}
+
+function decrementActiveJobs(): void {
+  activeJobsCount = Math.max(0, activeJobsCount - 1);
+  setActiveJobs(activeJobsCount);
+}
 
 async function main() {
   logger.info(
@@ -48,168 +89,116 @@ async function main() {
     'Starting worker'
   );
 
-  // Start metrics server
   startMetricsServer(config.metricsPort);
 
-  // Create email worker
   const redisConnection = getRedis() as unknown as ConnectionOptions;
-  emailWorker = new Worker<SendEmailJobData>(
-    QUEUE_NAMES.EMAIL,
-    async (job: Job<SendEmailJobData>) => {
-      await processEmailJob(job);
+
+  // Create email worker with full event tracking
+  const emailConfig: WorkerConfig = {
+    connection: redisConnection,
+    concurrency: config.concurrency,
+    removeOnComplete: {
+      age: EMAIL_RETENTION_COMPLETED_AGE_SECONDS,
+      count: EMAIL_RETENTION_COMPLETED_COUNT,
     },
+    removeOnFail: {
+      age: EMAIL_RETENTION_FAILED_AGE_SECONDS,
+      count: EMAIL_RETENTION_FAILED_COUNT,
+    },
+  };
+
+  emailWorker = createWorker<SendEmailJobData>(
+    QUEUE_NAMES.EMAIL,
+    processEmailJob,
+    emailConfig,
     {
-      connection: redisConnection,
-      concurrency: config.concurrency,
-      removeOnComplete: {
-        age: 86400, // 24 hours
-        count: 1000,
+      onReady: () => {
+        logger.info('Email worker ready');
+        setWorkerStatus(true);
       },
-      removeOnFail: {
-        age: 604800, // 7 days
-        count: 5000,
+      onActive: (job) => {
+        incrementActiveJobs();
+        logger.debug(
+          { jobId: job.id, emailId: job.data.emailId, attempt: job.attemptsMade + 1 },
+          'Job active'
+        );
       },
+      onCompleted: (job) => {
+        decrementActiveJobs();
+        logger.info(
+          {
+            jobId: job.id,
+            emailId: job.data.emailId,
+            duration: job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : null,
+          },
+          'Job completed'
+        );
+      },
+      onFailed: (job, error) => {
+        decrementActiveJobs();
+        logger.error(
+          { jobId: job?.id, emailId: job?.data.emailId, error: error.message, attempt: job?.attemptsMade },
+          'Job failed'
+        );
+      },
+      onError: createErrorHandler('Email'),
+      onStalled: (jobId) => logger.warn({ jobId }, 'Job stalled'),
     }
   );
-
-  // Track active jobs count
-  let activeJobsCount = 0;
-
-  // Worker event handlers
-  emailWorker.on('ready', () => {
-    logger.info('Email worker ready');
-    setWorkerStatus(true);
-  });
-
-  emailWorker.on('active', (job) => {
-    activeJobsCount++;
-    setActiveJobs(activeJobsCount);
-    logger.debug(
-      {
-        jobId: job.id,
-        emailId: job.data.emailId,
-        attempt: job.attemptsMade + 1,
-      },
-      'Job active'
-    );
-  });
-
-  emailWorker.on('completed', (job) => {
-    activeJobsCount = Math.max(0, activeJobsCount - 1);
-    setActiveJobs(activeJobsCount);
-    logger.info(
-      {
-        jobId: job.id,
-        emailId: job.data.emailId,
-        duration: job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : null,
-      },
-      'Job completed'
-    );
-  });
-
-  emailWorker.on('failed', (job, error) => {
-    activeJobsCount = Math.max(0, activeJobsCount - 1);
-    setActiveJobs(activeJobsCount);
-    logger.error(
-      {
-        jobId: job?.id,
-        emailId: job?.data.emailId,
-        error: error.message,
-        attempt: job?.attemptsMade,
-      },
-      'Job failed'
-    );
-  });
-
-  emailWorker.on('error', (error) => {
-    logger.error({ error }, 'Worker error');
-  });
-
-  emailWorker.on('stalled', (jobId) => {
-    logger.warn({ jobId }, 'Job stalled');
-  });
 
   // Create webhook worker
-  webhookWorker = new Worker<DeliverWebhookJobData>(
+  webhookWorker = createWorker<DeliverWebhookJobData>(
     QUEUE_NAMES.WEBHOOK,
-    async (job: Job<DeliverWebhookJobData>) => {
-      await processWebhookJob(job);
-    },
+    processWebhookJob,
     {
       connection: redisConnection,
-      concurrency: 5, // Lower concurrency for webhooks
+      concurrency: WEBHOOK_WORKER_CONCURRENCY,
       removeOnComplete: {
-        age: 3600, // 1 hour
-        count: 500,
+        age: WEBHOOK_RETENTION_COMPLETED_AGE_SECONDS,
+        count: WEBHOOK_RETENTION_COMPLETED_COUNT,
       },
       removeOnFail: {
-        age: 604800, // 7 days
-        count: 1000,
+        age: WEBHOOK_RETENTION_FAILED_AGE_SECONDS,
+        count: WEBHOOK_RETENTION_FAILED_COUNT,
       },
+    },
+    {
+      onReady: () => logger.info('Webhook worker ready'),
+      onFailed: createFailedHandler('Webhook', (job) => ({
+        deliveryId: job?.data.webhookDeliveryId,
+      })),
+      onError: createErrorHandler('Webhook'),
     }
   );
-
-  webhookWorker.on('ready', () => {
-    logger.info('Webhook worker ready');
-  });
-
-  webhookWorker.on('failed', (job, error) => {
-    logger.error(
-      {
-        jobId: job?.id,
-        deliveryId: job?.data.webhookDeliveryId,
-        error: error.message,
-      },
-      'Webhook job failed'
-    );
-  });
-
-  webhookWorker.on('error', (error) => {
-    logger.error({ error }, 'Webhook worker error');
-  });
 
   // Create tracking worker
-  trackingWorker = new Worker<RecordTrackingJobData>(
+  trackingWorker = createWorker<RecordTrackingJobData>(
     QUEUE_NAMES.TRACKING,
-    async (job: Job<RecordTrackingJobData>) => {
-      await processTrackingJob(job);
-    },
+    processTrackingJob,
     {
       connection: redisConnection,
-      concurrency: 10, // Higher concurrency for fast tracking jobs
+      concurrency: TRACKING_WORKER_CONCURRENCY,
       removeOnComplete: {
-        age: 3600,
-        count: 10000,
+        age: TRACKING_RETENTION_COMPLETED_AGE_SECONDS,
+        count: TRACKING_RETENTION_COMPLETED_COUNT,
       },
       removeOnFail: {
-        age: 86400,
-        count: 1000,
+        age: TRACKING_RETENTION_FAILED_AGE_SECONDS,
+        count: TRACKING_RETENTION_FAILED_COUNT,
       },
+    },
+    {
+      onReady: () => logger.info('Tracking worker ready'),
+      onFailed: createFailedHandler('Tracking', (job) => ({
+        type: job?.data.type,
+        emailId: job?.data.emailId,
+      })),
+      onError: createErrorHandler('Tracking'),
     }
   );
 
-  trackingWorker.on('ready', () => {
-    logger.info('Tracking worker ready');
-  });
-
-  trackingWorker.on('failed', (job, error) => {
-    logger.error(
-      {
-        jobId: job?.id,
-        type: job?.data.type,
-        emailId: job?.data.emailId,
-        error: error.message,
-      },
-      'Tracking job failed'
-    );
-  });
-
-  trackingWorker.on('error', (error) => {
-    logger.error({ error }, 'Tracking worker error');
-  });
-
-  // Create analytics worker
-  analyticsWorker = new Worker<AggregateStatsJobData | UpdateReputationJobData>(
+  // Create analytics worker with job type routing
+  analyticsWorker = createWorker<AggregateStatsJobData | UpdateReputationJobData>(
     QUEUE_NAMES.ANALYTICS,
     async (job: Job<AggregateStatsJobData | UpdateReputationJobData>) => {
       if (job.name === JOB_TYPES.AGGREGATE_STATS) {
@@ -220,56 +209,36 @@ async function main() {
     },
     {
       connection: redisConnection,
-      concurrency: 2, // Low concurrency for analytics
+      concurrency: ANALYTICS_WORKER_CONCURRENCY,
       removeOnComplete: {
-        age: 3600,
-        count: 100,
+        age: ANALYTICS_RETENTION_COMPLETED_AGE_SECONDS,
+        count: ANALYTICS_RETENTION_COMPLETED_COUNT,
       },
       removeOnFail: {
-        age: 86400,
-        count: 100,
+        age: ANALYTICS_RETENTION_FAILED_AGE_SECONDS,
+        count: ANALYTICS_RETENTION_FAILED_COUNT,
       },
+    },
+    {
+      onReady: () => logger.info('Analytics worker ready'),
+      onFailed: createFailedHandler('Analytics', (job) => ({ name: job?.name })),
+      onError: createErrorHandler('Analytics'),
     }
   );
 
-  analyticsWorker.on('ready', () => {
-    logger.info('Analytics worker ready');
-  });
-
-  analyticsWorker.on('failed', (job, error) => {
-    logger.error(
-      {
-        jobId: job?.id,
-        name: job?.name,
-        error: error.message,
-      },
-      'Analytics job failed'
-    );
-  });
-
-  analyticsWorker.on('error', (error) => {
-    logger.error({ error }, 'Analytics worker error');
-  });
-
-  // Start the scheduler for recurring jobs (runs every minute)
-  stopScheduler = startScheduler(60000);
+  // Start the scheduler for recurring jobs
+  stopScheduler = startScheduler(SCHEDULER_INTERVAL_MS);
 
   logger.info('All workers started');
 }
 
-// Graceful shutdown
 async function shutdown(signal: string) {
-  if (isShuttingDown) {
-    return;
-  }
+  if (isShuttingDown) return;
   isShuttingDown = true;
 
   logger.info({ signal }, 'Shutting down worker...');
-
-  // Set worker status to stopped
   setWorkerStatus(false);
 
-  // Stop the scheduler
   if (stopScheduler) {
     stopScheduler();
     logger.info('Scheduler stopped');
@@ -277,46 +246,31 @@ async function shutdown(signal: string) {
 
   try {
     // Close all workers (waits for active jobs to complete)
-    if (emailWorker) {
-      logger.info('Closing email worker...');
-      await emailWorker.close();
-      logger.info('Email worker closed');
+    const workers = [
+      { worker: emailWorker, name: 'Email' },
+      { worker: webhookWorker, name: 'Webhook' },
+      { worker: trackingWorker, name: 'Tracking' },
+      { worker: analyticsWorker, name: 'Analytics' },
+    ];
+
+    for (const { worker, name } of workers) {
+      if (worker) {
+        logger.info(`Closing ${name} worker...`);
+        await worker.close();
+        logger.info(`${name} worker closed`);
+      }
     }
 
-    if (webhookWorker) {
-      logger.info('Closing webhook worker...');
-      await webhookWorker.close();
-      logger.info('Webhook worker closed');
-    }
-
-    if (trackingWorker) {
-      logger.info('Closing tracking worker...');
-      await trackingWorker.close();
-      logger.info('Tracking worker closed');
-    }
-
-    if (analyticsWorker) {
-      logger.info('Closing analytics worker...');
-      await analyticsWorker.close();
-      logger.info('Analytics worker closed');
-    }
-
-    // Close SMTP connections
     await closeAllConnections();
     logger.info('SMTP connections closed');
 
-    // Close Redis
     await closeRedis();
     logger.info('Redis closed');
 
-    // Close database
     await closeDatabase();
     logger.info('Database closed');
 
-    // Stop metrics server
     await stopMetricsServer();
-
-    // Shutdown tracing
     await shutdownTracing();
 
     logger.info('Shutdown complete');
@@ -330,7 +284,6 @@ async function shutdown(signal: string) {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-// Handle uncaught errors
 process.on('uncaughtException', (error) => {
   logger.fatal({ error }, 'Uncaught exception');
   process.exit(1);
@@ -341,7 +294,6 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-// Start the worker
 main().catch((error) => {
   logger.fatal({ error }, 'Failed to start worker');
   process.exit(1);

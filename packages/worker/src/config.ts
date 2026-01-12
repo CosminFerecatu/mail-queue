@@ -5,6 +5,21 @@ import { z } from 'zod';
 // Load .env from root directory
 dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
 
+/**
+ * Zod schema for parsing boolean values from environment variables
+ * Accepts: 'true', '1', 'yes' as truthy values (case-insensitive)
+ */
+const envBoolean = (defaultValue: boolean) =>
+  z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return defaultValue;
+      if (typeof val === 'boolean') return val;
+      const str = String(val).toLowerCase().trim();
+      return str === 'true' || str === '1' || str === 'yes';
+    },
+    z.boolean()
+  );
+
 const ConfigSchema = z.object({
   // Worker
   concurrency: z.coerce.number().int().min(1).max(100).default(10),
@@ -22,10 +37,7 @@ const ConfigSchema = z.object({
   // SMTP (default/fallback)
   smtpHost: z.string().optional(),
   smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
-  smtpSecure: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('false'),
+  smtpSecure: envBoolean(false),
   smtpUser: z.string().optional(),
   smtpPass: z.string().optional(),
 
@@ -38,10 +50,7 @@ const ConfigSchema = z.object({
   metricsAuthPass: z.string().optional(),
 
   // Privacy
-  anonymizeIpAddresses: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('true'),
+  anonymizeIpAddresses: envBoolean(true),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
