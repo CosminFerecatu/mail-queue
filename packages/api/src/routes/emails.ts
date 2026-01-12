@@ -14,7 +14,6 @@ import {
 } from '../services/email.service.js';
 import { getQueueByName } from '../services/queue.service.js';
 import { requireScope, requireAuth } from '../middleware/auth.js';
-import { requireApiKeyAuth } from '../middleware/app-auth.js';
 import { getRateLimiter } from '../lib/rate-limiter.js';
 import { recordRateLimitHit } from '../lib/metrics.js';
 import { config } from '../config.js';

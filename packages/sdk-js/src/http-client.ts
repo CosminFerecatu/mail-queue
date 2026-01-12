@@ -1,5 +1,11 @@
 import type { MailQueueConfig, ApiResponse, ApiErrorResponse } from './types.js';
-import { MailQueueError, NetworkError, TimeoutError, RateLimitError, createErrorFromResponse } from './errors.js';
+import {
+  MailQueueError,
+  NetworkError,
+  TimeoutError,
+  RateLimitError,
+  createErrorFromResponse,
+} from './errors.js';
 import { SDK_VERSION } from './version.js';
 
 const DEFAULT_BASE_URL = 'https://api.mailqueue.io';

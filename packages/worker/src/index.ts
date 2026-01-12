@@ -2,7 +2,7 @@
 import { initTracing, shutdown as shutdownTracing } from './lib/tracing.js';
 initTracing();
 
-import { Worker, type Job, type ConnectionOptions } from 'bullmq';
+import type { Worker, Job, ConnectionOptions } from 'bullmq';
 import {
   QUEUE_NAMES,
   type SendEmailJobData,
@@ -107,44 +107,44 @@ async function main() {
     },
   };
 
-  emailWorker = createWorker<SendEmailJobData>(
-    QUEUE_NAMES.EMAIL,
-    processEmailJob,
-    emailConfig,
-    {
-      onReady: () => {
-        logger.info('Email worker ready');
-        setWorkerStatus(true);
-      },
-      onActive: (job) => {
-        incrementActiveJobs();
-        logger.debug(
-          { jobId: job.id, emailId: job.data.emailId, attempt: job.attemptsMade + 1 },
-          'Job active'
-        );
-      },
-      onCompleted: (job) => {
-        decrementActiveJobs();
-        logger.info(
-          {
-            jobId: job.id,
-            emailId: job.data.emailId,
-            duration: job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : null,
-          },
-          'Job completed'
-        );
-      },
-      onFailed: (job, error) => {
-        decrementActiveJobs();
-        logger.error(
-          { jobId: job?.id, emailId: job?.data.emailId, error: error.message, attempt: job?.attemptsMade },
-          'Job failed'
-        );
-      },
-      onError: createErrorHandler('Email'),
-      onStalled: (jobId) => logger.warn({ jobId }, 'Job stalled'),
-    }
-  );
+  emailWorker = createWorker<SendEmailJobData>(QUEUE_NAMES.EMAIL, processEmailJob, emailConfig, {
+    onReady: () => {
+      logger.info('Email worker ready');
+      setWorkerStatus(true);
+    },
+    onActive: (job) => {
+      incrementActiveJobs();
+      logger.debug(
+        { jobId: job.id, emailId: job.data.emailId, attempt: job.attemptsMade + 1 },
+        'Job active'
+      );
+    },
+    onCompleted: (job) => {
+      decrementActiveJobs();
+      logger.info(
+        {
+          jobId: job.id,
+          emailId: job.data.emailId,
+          duration: job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : null,
+        },
+        'Job completed'
+      );
+    },
+    onFailed: (job, error) => {
+      decrementActiveJobs();
+      logger.error(
+        {
+          jobId: job?.id,
+          emailId: job?.data.emailId,
+          error: error.message,
+          attempt: job?.attemptsMade,
+        },
+        'Job failed'
+      );
+    },
+    onError: createErrorHandler('Email'),
+    onStalled: (jobId) => logger.warn({ jobId }, 'Job stalled'),
+  });
 
   // Create webhook worker
   webhookWorker = createWorker<DeliverWebhookJobData>(

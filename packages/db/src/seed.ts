@@ -19,12 +19,20 @@ const ADMIN_PASSWORD = process.env['ADMIN_PASSWORD'];
 const ADMIN_NAME = process.env['ADMIN_NAME'] || 'Admin User';
 
 if (!ADMIN_EMAIL) {
-  throw new Error('ADMIN_EMAIL environment variable is required. Do not use default credentials in production.');
+  throw new Error(
+    'ADMIN_EMAIL environment variable is required. Do not use default credentials in production.'
+  );
 }
 
 if (!ADMIN_PASSWORD) {
-  throw new Error('ADMIN_PASSWORD environment variable is required. Do not use default credentials in production.');
+  throw new Error(
+    'ADMIN_PASSWORD environment variable is required. Do not use default credentials in production.'
+  );
 }
+
+// Capture validated values with proper types for use in async function
+const adminEmail: string = ADMIN_EMAIL;
+const adminPassword: string = ADMIN_PASSWORD;
 
 async function seed() {
   const client = postgres(DATABASE_URL as string);
@@ -35,7 +43,7 @@ async function seed() {
     const [existingUser] = await db
       .select()
       .from(users)
-      .where(eq(users.email, ADMIN_EMAIL))
+      .where(eq(users.email, adminEmail))
       .limit(1);
 
     if (existingUser) {
@@ -43,13 +51,13 @@ async function seed() {
     }
 
     // Hash password
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+    const passwordHash = await bcrypt.hash(adminPassword, 12);
 
     // Create admin user
     await db
       .insert(users)
       .values({
-        email: ADMIN_EMAIL,
+        email: adminEmail,
         passwordHash,
         name: ADMIN_NAME,
         role: 'super_admin',

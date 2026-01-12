@@ -153,7 +153,7 @@ async function updateStatusToProcessing(emailId: string): Promise<void> {
  */
 async function resolveSmtpConfig(
   queueId: string,
-  jobLogger: typeof logger
+  _jobLogger: typeof logger
 ): Promise<{ smtpConfig: SmtpClientConfig | null; queueName: string }> {
   const db = getDatabase();
   let queueName = 'unknown';

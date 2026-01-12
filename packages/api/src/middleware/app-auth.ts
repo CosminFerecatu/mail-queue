@@ -57,7 +57,10 @@ export async function requireAppOrAccountAuth(
  *
  * @returns true if authorized, false if response was sent (caller should return early)
  */
-export async function requireAppAuth(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
+export async function requireAppAuth(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<boolean> {
   if (!request.appId) {
     reply.status(401).send({
       success: false,

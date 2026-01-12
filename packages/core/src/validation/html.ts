@@ -219,7 +219,9 @@ export function validateHtml(
   if (opts.checkSpamTriggers) {
     const foundTriggers = detectSpamTriggers(html);
     if (foundTriggers.length > 3) {
-      warnings.push(`HTML contains multiple spam trigger phrases: ${foundTriggers.slice(0, 5).join(', ')}`);
+      warnings.push(
+        `HTML contains multiple spam trigger phrases: ${foundTriggers.slice(0, 5).join(', ')}`
+      );
     }
   }
 

@@ -10,15 +10,12 @@ dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
  * Accepts: 'true', '1', 'yes' as truthy values (case-insensitive)
  */
 const envBoolean = (defaultValue: boolean) =>
-  z.preprocess(
-    (val) => {
-      if (val === undefined || val === null || val === '') return defaultValue;
-      if (typeof val === 'boolean') return val;
-      const str = String(val).toLowerCase().trim();
-      return str === 'true' || str === '1' || str === 'yes';
-    },
-    z.boolean()
-  );
+  z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return defaultValue;
+    if (typeof val === 'boolean') return val;
+    const str = String(val).toLowerCase().trim();
+    return str === 'true' || str === '1' || str === 'yes';
+  }, z.boolean());
 
 const ConfigSchema = z.object({
   // Worker

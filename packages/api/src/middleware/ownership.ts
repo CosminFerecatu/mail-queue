@@ -148,7 +148,7 @@ export async function verifyResourceOwnership<T extends { accountId?: string | n
   request: FastifyRequest,
   reply: FastifyReply,
   resource: T | null | undefined,
-  resourceName: string = 'Resource'
+  resourceName = 'Resource'
 ): Promise<boolean> {
   if (!resource) {
     reply.status(404).send({

@@ -139,7 +139,14 @@ export async function processBounceJob(job: Job<ProcessBounceJobData>): Promise<
     // Soft bounces get temporary suppression
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + SOFT_BOUNCE_EXPIRATION_DAYS);
-    await addToSuppressionList(appId, emailId, bouncedRecipients, 'soft_bounce', jobLogger, expiresAt);
+    await addToSuppressionList(
+      appId,
+      emailId,
+      bouncedRecipients,
+      'soft_bounce',
+      jobLogger,
+      expiresAt
+    );
   }
 
   jobLogger.info(
